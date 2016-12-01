@@ -18,24 +18,32 @@
 #define true 1
 #define false 0
 #define COD_FAST_QUIT 7
+#define USERNAME_LEN 30
+#define COD_CON_REQ 8
+#define COD_CON_REF 9
 
 #define QUEUE_LEN 10
+
+
+//DISCONNETTITI CON IL I
+
 
 int n_client=0;// variabile usata per stimare la dimensione del buffer per lawho
 
 enum statoClient{LIBERO,OCCUPATO};
 
 struct listaClient{
+	int socket;
 	struct listaClient * next; 
 	int porta; 
-	char username[30];
+	char username[USERNAME_LEN];
 	char ip[16];
 	enum statoClient stato;
 };
 void controllaReceive(int ret,int i){
 	if(ret==-1){
 		perror("Errore nella recv");
-		exit(1);
+	//	exit(1);
 	}
 	if(ret==0){
 		printf("Client disconnesso \n");
@@ -45,9 +53,8 @@ void controllaReceive(int ret,int i){
 }
 void inviaInt(int sd, int msgl){
 	int ret;
-	printf("messaggio prima htonl%d\n",msgl );
 	int msg=htonl(msgl);
-	printf("messaggio dopo htonl%d\n",ntohl(msg ));
+	printf("intero inviato %d\n",ntohl(msg ));
 	ret=send(sd,(void*)&msg,sizeof(int),0);
 	printf("%d\n",ret );
 	if(ret==-1){
@@ -81,10 +88,10 @@ void inserimentoLista(struct listaClient ** testa, struct listaClient *p){
 	p->next=*testa;
 	*testa=p;
 }
-void inserimentoDatiLista(char*buf,int udp, struct listaClient *p){
+void inserimentoDatiLista(int i,char*buf,int udp, struct listaClient *p){
 	//effettua un controllo fai inserimentoLista in coda;
 	while(1 ){
-		if(p->porta==0)
+		if(p->socket==i)
 			break;
 		p=p->next;
 	}
@@ -161,38 +168,54 @@ void who(int i,struct listaClient * p){//faccio una stima di 20 char per client
 	}
 	printf("invio nella who di: %s\n a",buf );
 	dim=strlen(buf)+1;
+	inviaInt(i,COD_WHO);
 	inviaByte(i,dim,buf);
 }
-void rimuoviDaLista(char * username,struct listaClient ** testa){
+void rimuoviDaLista(int i,struct listaClient ** testa){
 	struct listaClient * p=*testa;
 	struct listaClient * prev=NULL;
 	while(p!=NULL){
 		if(p->porta!=0){
-			if(strcmp(username,p->username)==0){
-				printf("rimuovo l'utente username %s\n",username );
+			if(i==p->socket){
+				printf("rimuovo l'utente username %s\n",p->username );
 				if (prev==0)
 					*testa=p->next;
 				else{
 					prev->next=p->next;
 				}
 				free(p);
-
 			}
 		}
 		prev=p;
 		p=p->next;
 	}
-
 }
 void quit(int i,struct listaClient ** testa,fd_set*master){
 	n_client--;
-	int dimMsg=quantiByte(i);
-	char username[dimMsg];
-	riceviByte(i,username,dimMsg);
-	rimuoviDaLista(username,testa);
+	rimuoviDaLista(i,testa);
 	close(i);
 	FD_CLR(i,master);
-
+}
+void connectUser(int i,struct listaClient*p){
+	int dim=quantiByte(i);
+	char user[dim];
+	riceviByte(i,user,dim);
+	struct listaClient *target=NULL;
+	struct listaClient *sender=NULL;
+	while(p!=NULL){
+		if(p->socket==i)
+			sender=p;
+		if(strcmp(p->username,user)==0)
+			target=p;
+		p=p->next;
+	}
+	printf("il client %s si vuole connettere a %s\n",sender->username,user);
+	if(target==NULL || target->stato==OCCUPATO){
+		inviaInt(i,COD_CON_REF);
+		return;
+	}
+	target->stato=OCCUPATO;
+	sender->stato=OCCUPATO;
 }
 void decripta(int cod, int i,struct listaClient ** testa,fd_set*master){
 	printf("sto decriptando\n");
@@ -209,6 +232,10 @@ void decripta(int cod, int i,struct listaClient ** testa,fd_set*master){
 			printf("ricevuta una fast_quit\n");
 			close(i);
 			FD_CLR(i,master);
+			break;
+		case COD_CON_REQ:
+			printf("ricevuta una richiesta di connect\n");
+			connectUser(i,*testa);
 			break;
 		printf("codifica non riconosciuta\n");
 		break;
@@ -269,6 +296,7 @@ int main(int argc, char*argv[]){
 		perror("Errore nella listen ");
 		exit(1);
 	}
+
 	int i;
 	int dimMsg;
 	socklen_t len=sizeof(client);
@@ -285,6 +313,7 @@ int main(int argc, char*argv[]){
 					len=sizeof(client);
 					new_sd=accept(sd,(struct sockaddr*)&client,&len);
 					strcpy(nuovoClient->ip,inet_ntoa(client.sin_addr));
+					nuovoClient->socket=new_sd;
 					if(new_sd==-1){
 						perror("Errore nella accept");
 						exit(1);
@@ -306,7 +335,7 @@ int main(int argc, char*argv[]){
 							if(usernamePresente(c,testa)==false){
 								printf("username non presente\n");
 								inviaInt(i,OK);
-								inserimentoDatiLista(c,udp,testa);
+								inserimentoDatiLista(i,c,udp,testa);
 								stampaLista(testa);
 								break;
 							}
@@ -321,7 +350,5 @@ int main(int argc, char*argv[]){
 		}
 	}
 	return 0;
-
-
 }
 

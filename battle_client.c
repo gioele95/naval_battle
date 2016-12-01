@@ -10,16 +10,22 @@
 #include <errno.h>
 #include <signal.h>
 
+#define true 1
+#define false 0
 #define INT_DIM 2
 #define COD_WHO 1
 #define COD_INFO 2
 #define OK 3
 #define COD_QUIT 5
+#define COD_CON_REQ 8
+#define COD_CON_REF 9
+
 #define USERNAME_LEN 30
 #define COD_FAST_QUIT 7
 
 int sd;
 char username[USERNAME_LEN];
+int waitingConnect;
 
 enum StatoCasella{OCCUPATA,COLPITA,MANCATA,VUOTO};
 // nave posizionata o //nave non colpita ~ // nave colpita     x	// Vuoto ?
@@ -111,9 +117,8 @@ void posizionaNavi(enum StatoCasella *b){
 }
 void inviaInt(int sd, int msgl){
 	int ret;
-	printf("messaggio prima htonl%d\n",msgl );
 	int msg=htonl(msgl);
-	printf("messaggio dopo htonl%d\n",ntohl(msg ));
+	printf("invio al server il numero %d \n",ntohl(msg ));
 	ret=send(sd,(void*)&msg,sizeof(int),0);
 	printf("%d\n",ret );
 	if(ret==-1){
@@ -131,6 +136,11 @@ int quantiByte(int i){
 	controllaReceive(ret);
 	int dimMsg2=(int)ntohl(dimMsg);
 	printf("byte ricevuti: %d \n",ret);
+	if(ret==0){
+		printf("Il server si è disconnesso\n");
+		close(sd);
+		exit(1);
+	}
 	printf("il server vuole mandare %d byte\n",dimMsg2 );
 	return dimMsg2;
 }
@@ -164,25 +174,41 @@ int insertUsername(char*user){
 void who(int sd){
 	printf("provo invio al server il codice %d \n",COD_WHO);
 	inviaInt(sd,COD_WHO);
-	int dimMsg=quantiByte(sd);
-	char buf[dimMsg];
-	riceviByte(sd,buf,dimMsg);
-	printf("Clienti connessi al server:\n");
-	printf("%s\n",buf );
 }
 void quit(int sd,char*username){
 	printf("provo invio al server il codice %d \n",COD_QUIT);
 	inviaInt(sd,COD_QUIT);
-	int dimMsg=strlen(username)+1;
-	inviaByte(sd,dimMsg,username);
 	printf("Mi disconnetto dal server:\n");
 	close(sd);
 }
+void connectUser(int sd){
+	char user[USERNAME_LEN];
+	//int dimMsg=insertUsername(user);
+	int dimMsg;
+	scanf("%30s",user);
+	dimMsg=strlen(user)+1;
+	printf("%d\n",dimMsg );
+	if(dimMsg>=USERNAME_LEN){
+		printf("comando non valido lo username è troppo lungo\n");
+		//fflush(stdin);
+		return;
+	}	
+	printf("ti vuoi connettere a %s\n", user);
+	if(waitingConnect==true){
+		printf("non puoi fare una connect sei già in attesa\n");
+		return;
+	}
+	if(strcmp(user,username)==0){
+		printf("non puoi fare una connect a te stesso\n");
+		return;
+	}
+	waitingConnect=true;
+	inviaInt(sd,COD_CON_REQ);
+	printf("sto per mandare al server %s\n", user);
+	inviaByte(sd,dimMsg,user);
+}
 void inserisciComando(int sd,char *buf,char*username){
-		printf("> ");
-		fflush(stdout);
-		scan:
-		scanf("%s",buf);
+		scanf("%19s",buf);
 		if(strcmp("!quit",buf)==0){
 			quit(sd,username);
 			exit(0);
@@ -191,11 +217,10 @@ void inserisciComando(int sd,char *buf,char*username){
 			help();
 			return;//continue;
 		}
-		if(strcmp("!connect",buf)==0){
-			scanf("%s",buf);
-			if(strcmp("username",buf)==0)
-				printf("da fare probabilmente bisogna fare una doppia send e receive con il server");
-				return;//continue;
+		if(strcmp("!connect",buf)==0){ /// PRENDI USERNAME SUBITO
+			connectUser(sd);
+			printf("ritorno da connectUser\n");
+			return;//continue;
 		}
 		if(strcmp("!who",buf)==0){
 			printf("compare riconosciuto who\n");
@@ -203,7 +228,6 @@ void inserisciComando(int sd,char *buf,char*username){
 			return;//continue;
 		}
 		printf("Comando digitato non riconosciuto, riprovare\n");
-		goto scan;
 }
 void inserisciPorta(int * portaAscolto){
 	while(1){
@@ -216,8 +240,9 @@ void inserisciPorta(int * portaAscolto){
 		break;
 	}
 }
+
 void inviaInfo(int sd,char *username){
-	int portaAscolto,ret;
+	int portaAscolto;
 	while(1){
 		printf("Inserisci il tuo nome client: ");
 		int dimMsg=insertUsername(username);
@@ -246,9 +271,32 @@ void mysigint(){
 	quit(sd,username);
 	exit(0);
 }
+void recvWho(int sd){
+	int dimMsg=quantiByte(sd);
+	char buf[dimMsg];
+	riceviByte(sd,buf,dimMsg);
+	printf("Clienti connessi al server:\n");
+	printf("%s\n",buf );
+}
+void decripta(int cod, int sd){
+	printf("sto decriptando\n");
+	switch(cod){
+		case COD_WHO:
+			printf("ricevuta una who\n");
+			recvWho(sd);
+			break;
+		case COD_CON_REF:
+			printf("connect rifiutate\n");
+         	waitingConnect=false;
+			break;
+		printf("codifica non riconosciuta\n");
+		break;
+	}
+}
 
 int main(int argc,char* argv[]) {
     strcpy(username,"");
+    waitingConnect=false;
     if (signal(SIGINT, mysigint) == SIG_ERR)
         printf("Cannot handle SIGINT!\n");
     if(argc<2){
@@ -291,6 +339,7 @@ int main(int argc,char* argv[]) {
     FD_SET(0,&master);
     fdmax=sd;
     int i;
+
     for(;;){
     	printf("> ");
         fflush(stdout);
@@ -299,9 +348,16 @@ int main(int argc,char* argv[]) {
         for(i=0;i<=fdmax;i++){
             if(FD_ISSET(i,&read)){
                 if(i==sd){
-                    ///richiesta dal server
+                	printf("richiesta dal server\n");
+                	int cod=quantiByte(sd);
+                	printf("%d\n",cod );
+                	decripta(cod,i);
+                	///DECRIPTA   
+                    ///richiesta dal server controllo codifica connect 
                 }else if (i==0){
+                	printf("inserisci comando\n");
                     inserisciComando(sd,buf,username);
+                    printf("aaa\n");
                 }
             }
     
