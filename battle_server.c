@@ -21,6 +21,7 @@
 #define USERNAME_LEN 30
 #define COD_CON_REQ 8
 #define COD_CON_REF 9
+#define COD_CON_ACC 10
 
 #define QUEUE_LEN 10
 
@@ -39,6 +40,7 @@ struct listaClient{
 	char username[USERNAME_LEN];
 	char ip[16];
 	enum statoClient stato;
+	char rival[USERNAME_LEN];
 };
 void controllaReceive(int ret,int i){
 	if(ret==-1){
@@ -216,6 +218,47 @@ void connectUser(int i,struct listaClient*p){
 	}
 	target->stato=OCCUPATO;
 	sender->stato=OCCUPATO;
+	strcpy(sender->rival,user);
+	strcpy(target->rival,sender->username);
+	//invio la codifica di richiesta connect ,username e porta udp di ascolto;
+	inviaInt(target->socket,COD_CON_REQ);   //cod conn
+	dim=strlen(sender->username)+1;
+	inviaByte(target->socket,dim,sender->username); //username
+	inviaInt(target->socket,target->porta); //udp
+}
+void gameAccepted(int i,struct listaClient * testa){
+	struct listaClient * p=testa;
+	while(testa!=NULL){
+		if(testa->socket==i)
+			break;
+		testa=testa->next;
+	}
+	while(p!=NULL){                                 ///posso evitare i due while in sequenza aggiungendo una variabile alla struct
+		if(strcmp(p->username,testa->rival)==0)
+			break;
+		p=p->next;
+	}
+	printf("il client %s ha accettato la partita con %s\n",testa->username,testa->rival);
+	inviaInt(p->socket,COD_CON_ACC);
+}
+void gameRefused(int i,struct listaClient * testa){
+	struct listaClient * p=testa;
+	while(testa!=NULL){
+		if(testa->socket==i)
+			break;
+		testa=testa->next;
+	}
+	while(p!=NULL){                                 ///posso evitare i due while in sequenza aggiungendo una variabile alla struct
+		if(strcmp(p->username,testa->rival)==0)
+			break;
+		p=p->next;
+	}
+	testa->stato=LIBERO;
+	p->stato=LIBERO;
+	strcpy(p->rival,"");
+	strcpy(testa->rival,"");
+	printf("il client %s ha accettato la partita con %s\n",testa->username,testa->rival);
+	inviaInt(p->socket,COD_CON_REF);
 }
 void decripta(int cod, int i,struct listaClient ** testa,fd_set*master){
 	printf("sto decriptando\n");
@@ -236,6 +279,12 @@ void decripta(int cod, int i,struct listaClient ** testa,fd_set*master){
 		case COD_CON_REQ:
 			printf("ricevuta una richiesta di connect\n");
 			connectUser(i,*testa);
+			break;
+		case COD_CON_ACC:
+			gameAccepted(i,*testa);
+			break;
+		case COD_CON_REF:
+			gameRefused(i,*testa);
 			break;
 		printf("codifica non riconosciuta\n");
 		break;
@@ -309,11 +358,12 @@ int main(int argc, char*argv[]){
 					nuovoClient=(struct listaClient*)malloc(sizeof(struct listaClient));// posso evitare queste 4 righe se dall id del socket riesco a ottenerne l'IP e fare tutto fuori dal listener
 					nuovoClient->next=NULL;
 					nuovoClient->porta=0;
-					inserimentoLista(&testa,nuovoClient);
 					len=sizeof(client);
 					new_sd=accept(sd,(struct sockaddr*)&client,&len);
 					strcpy(nuovoClient->ip,inet_ntoa(client.sin_addr));
 					nuovoClient->socket=new_sd;
+					strcpy(nuovoClient->rival," ");
+					inserimentoLista(&testa,nuovoClient);
 					if(new_sd==-1){
 						perror("Errore nella accept");
 						exit(1);

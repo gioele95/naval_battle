@@ -19,6 +19,7 @@
 #define COD_QUIT 5
 #define COD_CON_REQ 8
 #define COD_CON_REF 9
+#define COD_CON_ACC 10
 
 #define USERNAME_LEN 30
 #define COD_FAST_QUIT 7
@@ -26,7 +27,12 @@
 int sd;
 char username[USERNAME_LEN];
 int waitingConnect;
+int inGame;
 
+struct rival{
+	char user[USERNAME_LEN];
+	int udp;
+};
 enum StatoCasella{OCCUPATA,COLPITA,MANCATA,VUOTO};
 // nave posizionata o //nave non colpita ~ // nave colpita     x	// Vuoto ?
 void controllaReceive(int ret){
@@ -181,7 +187,7 @@ void quit(int sd,char*username){
 	printf("Mi disconnetto dal server:\n");
 	close(sd);
 }
-void connectUser(int sd){
+void connectUser(int sd,struct rival*opp){
 	char user[USERNAME_LEN];
 	//int dimMsg=insertUsername(user);
 	int dimMsg;
@@ -202,13 +208,14 @@ void connectUser(int sd){
 		printf("non puoi fare una connect a te stesso\n");
 		return;
 	}
+	strcpy(opp->user,user);
 	waitingConnect=true;
 	inviaInt(sd,COD_CON_REQ);
 	printf("sto per mandare al server %s\n", user);
 	inviaByte(sd,dimMsg,user);
 }
-void inserisciComando(int sd,char *buf,char*username){
-		scanf("%19s",buf);
+void inserisciComando(int sd,char *buf,char*username,struct rival*opp){
+		scanf("%19s",buf); ///scanf/"%ms",&buf delego al SO
 		if(strcmp("!quit",buf)==0){
 			quit(sd,username);
 			exit(0);
@@ -218,7 +225,7 @@ void inserisciComando(int sd,char *buf,char*username){
 			return;//continue;
 		}
 		if(strcmp("!connect",buf)==0){ /// PRENDI USERNAME SUBITO
-			connectUser(sd);
+			connectUser(sd,opp);
 			printf("ritorno da connectUser\n");
 			return;//continue;
 		}
@@ -226,6 +233,23 @@ void inserisciComando(int sd,char *buf,char*username){
 			printf("compare riconosciuto who\n");
 			who(sd);
 			return;//continue;
+		}
+		if((strcmp("y",buf)==0)&&(opp->udp!=0)){
+			printf("Hai accettato la partita con %s\n",opp->user);
+			printf("sulla porta: %d\n",opp->udp );
+			inviaInt(sd,COD_CON_ACC);
+			waitingConnect=false;
+			inGame=true;
+			return;
+		}
+		if((strcmp("n",buf)==0)&&(opp->udp!=0)){
+			printf("Hai rifiutato la partita con %s\n",opp->user);
+			opp->udp=0;
+			waitingConnect=false;
+			inviaInt(sd,COD_CON_REF);
+			//invia nak;
+			//acceptGame();
+			return;
 		}
 		printf("Comando digitato non riconosciuto, riprovare\n");
 }
@@ -278,7 +302,15 @@ void recvWho(int sd){
 	printf("Clienti connessi al server:\n");
 	printf("%s\n",buf );
 }
-void decripta(int cod, int sd){
+void connectRequest(int sd,struct rival*opp){
+	int dim=quantiByte(sd);
+	char user[dim];
+	riceviByte(sd,user,dim);
+	strcpy(opp->user,user);
+	opp->udp=quantiByte(sd); //ricevo la porta udp
+	printf("Ti vuoi connettere con il client %s?\n y/n?",user);
+}
+void decripta(int cod, int sd,struct rival *opp){
 	printf("sto decriptando\n");
 	switch(cod){
 		case COD_WHO:
@@ -286,17 +318,28 @@ void decripta(int cod, int sd){
 			recvWho(sd);
 			break;
 		case COD_CON_REF:
+			opp->udp=0;
 			printf("connect rifiutate\n");
          	waitingConnect=false;
 			break;
+		case COD_CON_REQ:            //richiesta di connessione di un altro socket
+			printf("richiesta di connessione\n");
+			connectRequest(sd,opp);
+		case COD_CON_ACC:       
+			inGame=true;     
+			printf("richiesta di connessione accettata con: %s\n",opp->user);
+			return;
 		printf("codifica non riconosciuta\n");
 		break;
 	}
 }
 
 int main(int argc,char* argv[]) {
+	struct rival opponent;//=(struct rival*)malloc(sizeof(struct rival));
+	opponent.udp=0;
     strcpy(username,"");
     waitingConnect=false;
+   // inGame=false;
     if (signal(SIGINT, mysigint) == SIG_ERR)
         printf("Cannot handle SIGINT!\n");
     if(argc<2){
@@ -339,10 +382,16 @@ int main(int argc,char* argv[]) {
     FD_SET(0,&master);
     fdmax=sd;
     int i;
+    //int udp=0;
 
     for(;;){
-    	printf("> ");
-        fflush(stdout);
+    	if(inGame==false){
+	    	printf("> ");
+	        fflush(stdout);
+	    }else{
+	    	printf("# ");
+	        fflush(stdout);	    	
+	    }
         read=master;
         select(fdmax+1,&read,NULL,NULL,NULL);
         for(i=0;i<=fdmax;i++){
@@ -351,12 +400,12 @@ int main(int argc,char* argv[]) {
                 	printf("richiesta dal server\n");
                 	int cod=quantiByte(sd);
                 	printf("%d\n",cod );
-                	decripta(cod,i);
+                	decripta(cod,i,&opponent);
                 	///DECRIPTA   
                     ///richiesta dal server controllo codifica connect 
                 }else if (i==0){
                 	printf("inserisci comando\n");
-                    inserisciComando(sd,buf,username);
+                    inserisciComando(sd,buf,username,&opponent);
                     printf("aaa\n");
                 }
             }
