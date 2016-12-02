@@ -26,12 +26,16 @@
 #define USERNAME_LEN 30
 #define COD_FAST_QUIT 7
 
+enum StatoCasella{OCCUPATA,COLPITA,MANCATA,VUOTO};
+// nave posizionata o //nave non colpita ~ // nave colpita     x	// Vuoto ?
 int sd;
 char username[USERNAME_LEN];
 int waitingConnect;
 int inGame;
 int naviRimaste;
-
+int naviDaPosizionare;
+enum StatoCasella tabella[36];
+enum StatoCasella tabellaAvversaria[36];
 
 struct rival{
 	char user[USERNAME_LEN];
@@ -43,8 +47,7 @@ struct rival{
     strncpy(buf,foo,dim);
     free(foo);
 }*/
-enum StatoCasella{OCCUPATA,COLPITA,MANCATA,VUOTO};
-// nave posizionata o //nave non colpita ~ // nave colpita     x	// Vuoto ?
+
 void controllaReceive(int ret){
 	if(ret==-1){
 		perror("Errore nella recv");
@@ -227,6 +230,13 @@ void connectUser(int sd,struct rival*opp){
 	printf("sto per mandare al server %s\n", user);
 	inviaByte(sd,dimMsg,user);
 }
+void disconnect(int sd){
+	naviDaPosizionare=true;
+	inGame=false;
+	inviaInt(sd,DISCONNECT);
+	printf("Ti sei disconnesso correttamente: TI SEI ARRESO\n");
+	resettaGriglia(tabellaAvversaria);
+}
 void inserisciComando(int sd,char *buf,char*username,struct rival*opp,enum StatoCasella *b){
 		scanf("%19s",buf); ///scanf/"%ms",&buf delego al SO
 		if(strcmp("!quit",buf)==0&&inGame==false){
@@ -241,13 +251,14 @@ void inserisciComando(int sd,char *buf,char*username,struct rival*opp,enum Stato
 			helpGame();
 			return;//continue;
 		}
-		/*if(strcmp("!disconnect",buf)==0&&inGame==true){
-			disconnect();
+		if(strcmp("!disconnect",buf)==0&&inGame==true){
+			disconnect(sd);
 			return;//continue;
-		}*/
+		}
 		if(strcmp("!connect",buf)==0&&inGame==false){ /// PRENDI USERNAME SUBITO
 			connectUser(sd,opp);
 			printf("ritorno da connectUser\n");
+			naviDaPosizionare=true;
 			return;//continue;
 		}
 		if(strcmp("!who",buf)==0&&inGame==false){
@@ -261,7 +272,7 @@ void inserisciComando(int sd,char *buf,char*username,struct rival*opp,enum Stato
 			inviaInt(sd,COD_CON_ACC);
 			waitingConnect=false;
 			inGame=true;
-			//posizionaNavi(b);   
+			posizionaNavi(b);   
 			return;
 		}
 		if((strcmp("n",buf)==0)&&(opp->udp!=0)){
@@ -271,6 +282,13 @@ void inserisciComando(int sd,char *buf,char*username,struct rival*opp,enum Stato
 			inviaInt(sd,COD_CON_REF);
 			//invia nak;
 			//acceptGame();
+			return;
+		}
+		if((strcmp("!show",buf)==0)&&(inGame)){
+			printf("Stampo la tua griglia\n");
+			stampa(tabella);
+			printf("Stampo la griglia avversaria\n");
+			stampa(tabellaAvversaria);
 			return;
 		}
 		printf("Comando digitato non riconosciuto, riprovare\n");
@@ -315,8 +333,8 @@ void mysigint(){
 		close(sd);
 		exit(0);
 	}
-	/*if(inGame==true)
-		disconnect();*/
+	if(inGame==true)
+		disconnect(sd);
 	quit(sd,username);
 	exit(0);
 }
@@ -358,13 +376,22 @@ void decripta(int cod, int sd,struct rival *opp,enum StatoCasella *b){
          	waitingConnect=false;
 			break;
 		case COD_CON_REQ:            //richiesta di connessione di un altro socket
+			naviDaPosizionare=true;
 			printf("richiesta di connessione\n");
 			connectRequest(sd,opp);
 			break;
 		case COD_CON_ACC:       
-			inGame=true;     
+			inGame=true;   
+			waitingConnect=false;  
 			printf("richiesta di connessione accettata con: %s\n",opp->user);
-//			posizionaNavi(b);
+			posizionaNavi(b);
+			break;
+		case DISCONNECT:
+			naviDaPosizionare=true;
+			inGame=false;
+			resettaGriglia(tabellaAvversaria);
+			printf("HAI VINTO!!! %s si è arreso\n",opp->user);
+			opp->udp=0;
 			break;
 		printf("codifica non riconosciuta\n");
 		break;
@@ -376,6 +403,8 @@ int main(int argc,char* argv[]) {
 	opponent.udp=0;
     strcpy(username,"");
     waitingConnect=false;
+    naviDaPosizionare=false;
+    resettaGriglia (tabellaAvversaria);
    	inGame=false;
     if (signal(SIGINT, mysigint) == SIG_ERR)
         printf("Cannot handle SIGINT!\n");
@@ -419,16 +448,17 @@ int main(int argc,char* argv[]) {
     FD_SET(0,&master);
     fdmax=sd;
     int i;
-    enum StatoCasella tabella[36];
+
     int naviDaPosizionare=true;
 
     for(;;){
     	if(inGame==false){
 	    	printf("> ");
 	        fflush(stdout);
-	    }else{    
-	        if(naviDaPosizionare==true){
-	       		posizionaNavi(tabella);	
+	    }else{   
+	    	printf("valore di naviDaPosizionare: %d",naviDaPosizionare); 
+	        if(naviDaPosizionare){
+	      // 		posizionaNavi(tabella);	
 	       		helpGame();
 	       		naviDaPosizionare=false;
 	       	}

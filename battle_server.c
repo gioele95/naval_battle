@@ -263,11 +263,31 @@ void gameRefused(int i,struct listaClient * testa){
 	}
 	testa->stato=LIBERO;
 	p->stato=LIBERO;
+	printf("il client %s ha rifiutato la partita con %s\n",testa->username,testa->rival);
 	strcpy(p->rival,"");
 	strcpy(testa->rival,"");
-	printf("il client %s ha rifiutato la partita con %s\n",testa->username,testa->rival);
 	inviaInt(p->socket,COD_CON_REFUSED);
 }
+void disconnect(int i,struct listaClient * testa){
+	struct listaClient *p=testa;
+	while(p){
+		if(p->socket==i)
+			break;
+		p=p->next;
+	}
+	while(testa!=NULL){                                 ///posso evitare i due while in sequenza aggiungendo una variabile alla struct
+		if(strcmp(testa->username,p->rival)==0)
+			break;
+		testa=testa->next;
+	}
+	testa->stato=LIBERO;
+	p->stato=LIBERO;
+	printf("il client %s si è arreso nella partita con %s\n",p->username,testa->username);
+	strcpy(p->rival,"");
+	strcpy(testa->rival,"");
+	inviaInt(testa->socket,DISCONNECT);
+}
+
 void decripta(int cod, int i,struct listaClient ** testa,fd_set*master){
 	printf("sto decriptando\n");
 	switch(cod){
@@ -293,6 +313,9 @@ void decripta(int cod, int i,struct listaClient ** testa,fd_set*master){
 			break;
 		case COD_CON_REF:
 			gameRefused(i,*testa);
+			break;
+		case DISCONNECT:
+			disconnect(i,*testa);
 			break;
 		printf("codifica non riconosciuta\n");
 		break;
