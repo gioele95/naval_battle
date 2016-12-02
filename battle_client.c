@@ -37,6 +37,12 @@ struct rival{
 	char user[USERNAME_LEN];
 	int udp;
 };
+/*void insert(char*buf,int dim){
+    char *foo; 
+    scanf("%ms", &foo);
+    strncpy(buf,foo,dim);
+    free(foo);
+}*/
 enum StatoCasella{OCCUPATA,COLPITA,MANCATA,VUOTO};
 // nave posizionata o //nave non colpita ~ // nave colpita     x	// Vuoto ?
 void controllaReceive(int ret){
@@ -97,7 +103,7 @@ void posizionaNavi(enum StatoCasella *b){
 	int i=0;
 	int x,y;
 	char buf[4];
-	printf("Inserire le coordinate in cui posizionare le 7 navi indicando le caselle [A-F],[1-6] separate da virgola\n");
+	printf("\rInserire le coordinate in cui posizionare le 7 navi indicando le caselle [A-F],[1-6] separate da virgola\n");
 	
 	while (i<7){
 		scanf("%s",buf);
@@ -128,7 +134,7 @@ void posizionaNavi(enum StatoCasella *b){
 void inviaInt(int sd, int msgl){
 	int ret;
 	int msg=htonl(msgl);
-	printf("invio al server il numero %d \n",ntohl(msg ));
+	printf("\rinvio al server il numero %d \n",ntohl(msg ));
 	ret=send(sd,(void*)&msg,sizeof(int),0);
 	printf("%d\n",ret );
 	if(ret==-1){
@@ -148,20 +154,20 @@ int quantiByte(int i){
 	ret=recv(i,(void*)&dimMsg,sizeof(int),0);
 	controllaReceive(ret);
 	int dimMsg2=(int)ntohl(dimMsg);
-	printf("byte ricevuti: %d \n",ret);
+	printf("\rbyte ricevuti: %d \n",ret);
 	if(ret==0){
 		printf("Il server si è disconnesso\n");
 		close(sd);
 		exit(1);
 	}
-	printf("il server vuole mandare %d byte\n",dimMsg2 );
+	printf("\ril server vuole mandare %d byte\n",dimMsg2 );
 	return dimMsg2;
 }
 void riceviByte(int i, void*buf,int dimMsg){
 	int ret;
 	ret=recv(i,(void*)buf,dimMsg,0);
 	controllaReceive(ret);
-	printf("byte ricevuti: %d \n \n",ret);
+	printf("\rbyte ricevuti: %d \n \n",ret);
 }
 void inviaByte(int sd, int dim, void * msg){
 	int ret;
@@ -327,7 +333,7 @@ void connectRequest(int sd,struct rival*opp){
 	riceviByte(sd,user,dim);
 	strcpy(opp->user,user);
 	opp->udp=quantiByte(sd); //ricevo la porta udp
-	printf("Ti vuoi connettere con il client %s?\n y/n?",user);
+	printf("Ti vuoi connettere con il client %s y/n?\n",user);
 }
 void decripta(int cod, int sd,struct rival *opp,enum StatoCasella *b){
 	printf("sto decriptando\n");
