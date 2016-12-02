@@ -12,7 +12,6 @@
 
 #define true 1
 #define false 0
-#define INT_DIM 2
 #define COD_WHO 1
 #define COD_INFO 2
 #define OK 3
@@ -20,6 +19,9 @@
 #define COD_CON_REQ 8
 #define COD_CON_REF 9
 #define COD_CON_ACC 10
+#define COD_CON_REF_OCC 11
+#define COD_CON_REFUSED 12
+#define DISCONNECT 13
 
 #define USERNAME_LEN 30
 #define COD_FAST_QUIT 7
@@ -28,6 +30,8 @@ int sd;
 char username[USERNAME_LEN];
 int waitingConnect;
 int inGame;
+int naviRimaste;
+
 
 struct rival{
 	char user[USERNAME_LEN];
@@ -96,7 +100,6 @@ void posizionaNavi(enum StatoCasella *b){
 	printf("Inserire le coordinate in cui posizionare le 7 navi indicando le caselle [A-F],[1-6] separate da virgola\n");
 	
 	while (i<7){
-		printf(">");
 		scanf("%s",buf);
 		if(strlen(buf)!=3){
 			printf("casella non valida \n");
@@ -120,6 +123,7 @@ void posizionaNavi(enum StatoCasella *b){
 		b[x-1+(y-1)*6]=OCCUPATA;
 		i++;
 	}
+	stampa(b);
 }
 void inviaInt(int sd, int msgl){
 	int ret;
@@ -134,6 +138,9 @@ void inviaInt(int sd, int msgl){
 }
 void help(){
 	printf("\nSono disponibili i seguenti comandi:\n!help --> mostra l'elenco dei comandi disponibili \n!who --> mostra l'elenco dei client connessi al server\n!connect username --> avvia una partita con l'utente username\n!quit --> disconnette il client dal server\n");	
+}
+void helpGame(){
+	printf("\nSono disponibili i seguenti comandi:\n!help --> mostra l'elenco dei comandi disponibili \n!disconnect --> disconnette il client dall'attuale partita\n!shot square --> fai un tentativo con la casella square\n!show --> visualizza la griglia di gioco\n");	
 }
 int quantiByte(int i){
 	int ret;
@@ -214,22 +221,30 @@ void connectUser(int sd,struct rival*opp){
 	printf("sto per mandare al server %s\n", user);
 	inviaByte(sd,dimMsg,user);
 }
-void inserisciComando(int sd,char *buf,char*username,struct rival*opp){
+void inserisciComando(int sd,char *buf,char*username,struct rival*opp,enum StatoCasella *b){
 		scanf("%19s",buf); ///scanf/"%ms",&buf delego al SO
-		if(strcmp("!quit",buf)==0){
+		if(strcmp("!quit",buf)==0&&inGame==false){
 			quit(sd,username);
 			exit(0);
 		}
-		if(strcmp("!help",buf)==0){
+		if(strcmp("!help",buf)==0&&inGame==false){
 			help();
 			return;//continue;
 		}
-		if(strcmp("!connect",buf)==0){ /// PRENDI USERNAME SUBITO
+		if(strcmp("!help",buf)==0&&inGame==true){
+			helpGame();
+			return;//continue;
+		}
+		/*if(strcmp("!disconnect",buf)==0&&inGame==true){
+			disconnect();
+			return;//continue;
+		}*/
+		if(strcmp("!connect",buf)==0&&inGame==false){ /// PRENDI USERNAME SUBITO
 			connectUser(sd,opp);
 			printf("ritorno da connectUser\n");
 			return;//continue;
 		}
-		if(strcmp("!who",buf)==0){
+		if(strcmp("!who",buf)==0&&inGame==false){
 			printf("compare riconosciuto who\n");
 			who(sd);
 			return;//continue;
@@ -240,6 +255,7 @@ void inserisciComando(int sd,char *buf,char*username,struct rival*opp){
 			inviaInt(sd,COD_CON_ACC);
 			waitingConnect=false;
 			inGame=true;
+			//posizionaNavi(b);   
 			return;
 		}
 		if((strcmp("n",buf)==0)&&(opp->udp!=0)){
@@ -265,7 +281,7 @@ void inserisciPorta(int * portaAscolto){
 	}
 }
 
-void inviaInfo(int sd,char *username){
+int inviaInfo(int sd,char *username){
 	int portaAscolto;
 	while(1){
 		printf("Inserisci il tuo nome client: ");
@@ -283,6 +299,7 @@ void inviaInfo(int sd,char *username){
 		printf("codice di ritorno %d\n",p );
 		printf("username già presente sul server: %s\n", username );
 	}
+	return portaAscolto;
 }
 void mysigint(){
 	printf("entro nella mysigint\n");
@@ -292,6 +309,8 @@ void mysigint(){
 		close(sd);
 		exit(0);
 	}
+	/*if(inGame==true)
+		disconnect();*/
 	quit(sd,username);
 	exit(0);
 }
@@ -310,7 +329,7 @@ void connectRequest(int sd,struct rival*opp){
 	opp->udp=quantiByte(sd); //ricevo la porta udp
 	printf("Ti vuoi connettere con il client %s?\n y/n?",user);
 }
-void decripta(int cod, int sd,struct rival *opp){
+void decripta(int cod, int sd,struct rival *opp,enum StatoCasella *b){
 	printf("sto decriptando\n");
 	switch(cod){
 		case COD_WHO:
@@ -319,16 +338,28 @@ void decripta(int cod, int sd,struct rival *opp){
 			break;
 		case COD_CON_REF:
 			opp->udp=0;
-			printf("connect rifiutate\n");
+			printf("connect rifiutata utente inesistente\n");
+         	waitingConnect=false;
+			break;
+		case COD_CON_REFUSED:
+			opp->udp=0;
+			printf("partita rifiutata da: %s\n",opp->user);
+         	waitingConnect=false;
+			break;
+		case COD_CON_REF_OCC:
+			opp->udp=0;
+			printf("connect rifiutata utente occupato\n");
          	waitingConnect=false;
 			break;
 		case COD_CON_REQ:            //richiesta di connessione di un altro socket
 			printf("richiesta di connessione\n");
 			connectRequest(sd,opp);
+			break;
 		case COD_CON_ACC:       
 			inGame=true;     
 			printf("richiesta di connessione accettata con: %s\n",opp->user);
-			return;
+//			posizionaNavi(b);
+			break;
 		printf("codifica non riconosciuta\n");
 		break;
 	}
@@ -339,7 +370,7 @@ int main(int argc,char* argv[]) {
 	opponent.udp=0;
     strcpy(username,"");
     waitingConnect=false;
-   // inGame=false;
+   	inGame=false;
     if (signal(SIGINT, mysigint) == SIG_ERR)
         printf("Cannot handle SIGINT!\n");
     if(argc<2){
@@ -367,9 +398,8 @@ int main(int argc,char* argv[]) {
         exit(1);
     }
     printf("connessione al server %s (porta %d) riuscita\n",ip,porta);
-    //char username[USERNAME_LEN];
     help();
-    inviaInfo(sd,username);
+    int udp=inviaInfo(sd,username);
     
     char buf[20];
     fd_set master;
@@ -378,19 +408,26 @@ int main(int argc,char* argv[]) {
     FD_ZERO(&master);
     FD_ZERO(&read);
 
+    FD_SET(udp,&master);
     FD_SET(sd,&master);
     FD_SET(0,&master);
     fdmax=sd;
     int i;
-    //int udp=0;
+    enum StatoCasella tabella[36];
+    int naviDaPosizionare=true;
 
     for(;;){
     	if(inGame==false){
 	    	printf("> ");
 	        fflush(stdout);
-	    }else{
-	    	printf("# ");
-	        fflush(stdout);	    	
+	    }else{    
+	        if(naviDaPosizionare==true){
+	       		posizionaNavi(tabella);	
+	       		helpGame();
+	       		naviDaPosizionare=false;
+	       	}
+	        printf("# ");
+	        fflush(stdout);	
 	    }
         read=master;
         select(fdmax+1,&read,NULL,NULL,NULL);
@@ -400,13 +437,13 @@ int main(int argc,char* argv[]) {
                 	printf("richiesta dal server\n");
                 	int cod=quantiByte(sd);
                 	printf("%d\n",cod );
-                	decripta(cod,i,&opponent);
+                	decripta(cod,i,&opponent,tabella);
                 	///DECRIPTA   
                     ///richiesta dal server controllo codifica connect 
                 }else if (i==0){
-                	printf("inserisci comando\n");
-                    inserisciComando(sd,buf,username,&opponent);
-                    printf("aaa\n");
+                    inserisciComando(sd,buf,username,&opponent,tabella);
+                }else if(i==udp){
+                	//qua ci sono i comandi di gioco 
                 }
             }
     
@@ -421,8 +458,8 @@ int main(int argc,char* argv[]) {
 
 /*
 // dati per la battaglia
-    int naviRimaste=7;
-    enum StatoCasella tabella[36];
+
+
     posizionaNavi(tabella);
     stampa(tabella);*/
     return 0;

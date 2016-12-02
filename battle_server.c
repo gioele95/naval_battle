@@ -22,6 +22,9 @@
 #define COD_CON_REQ 8
 #define COD_CON_REF 9
 #define COD_CON_ACC 10
+#define COD_CON_REF_OCC 11
+#define COD_CON_REFUSED 12
+#define DISCONNECT 13
 
 #define QUEUE_LEN 10
 
@@ -212,10 +215,14 @@ void connectUser(int i,struct listaClient*p){
 		p=p->next;
 	}
 	printf("il client %s si vuole connettere a %s\n",sender->username,user);
-	if(target==NULL || target->stato==OCCUPATO){
+	if(target==NULL) {
 		inviaInt(i,COD_CON_REF);
 		return;
 	}
+	if(	target->stato==OCCUPATO){
+		inviaInt(i,COD_CON_REF_OCC);
+		return;
+	}	
 	target->stato=OCCUPATO;
 	sender->stato=OCCUPATO;
 	strcpy(sender->rival,user);
@@ -257,8 +264,8 @@ void gameRefused(int i,struct listaClient * testa){
 	p->stato=LIBERO;
 	strcpy(p->rival,"");
 	strcpy(testa->rival,"");
-	printf("il client %s ha accettato la partita con %s\n",testa->username,testa->rival);
-	inviaInt(p->socket,COD_CON_REF);
+	printf("il client %s ha rifiutato la partita con %s\n",testa->username,testa->rival);
+	inviaInt(p->socket,COD_CON_REFUSED);
 }
 void decripta(int cod, int i,struct listaClient ** testa,fd_set*master){
 	printf("sto decriptando\n");
