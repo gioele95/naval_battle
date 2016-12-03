@@ -25,6 +25,8 @@
 
 #define USERNAME_LEN 30
 #define COD_FAST_QUIT 7
+#define IP_LEN 16
+//DEVI RICAVARE L?IP PER POI MANDARE UDP E POI FARE LA INETPTON
 
 enum StatoCasella{OCCUPATA,COLPITA,MANCATA,VUOTO};
 // nave posizionata o //nave non colpita ~ // nave colpita     x	// Vuoto ?
@@ -32,6 +34,7 @@ int sd;
 char username[USERNAME_LEN];
 int waitingConnect;
 int inGame;
+int myturn;
 int naviRimaste;
 int naviDaPosizionare;
 enum StatoCasella tabella[36];
@@ -40,6 +43,7 @@ enum StatoCasella tabellaAvversaria[36];
 struct rival{
 	char user[USERNAME_LEN];
 	int udp;
+	char ip[IP_LEN];
 };
 /*void insert(char*buf,int dim){
     char *foo; 
@@ -271,8 +275,10 @@ void inserisciComando(int sd,char *buf,char*username,struct rival*opp,enum Stato
 			printf("sulla porta: %d\n",opp->udp );
 			inviaInt(sd,COD_CON_ACC);
 			waitingConnect=false;
+			myturn=false;
 			inGame=true;
 			posizionaNavi(b);   
+			helpGame();
 			return;
 		}
 		if((strcmp("n",buf)==0)&&(opp->udp!=0)){
@@ -351,6 +357,9 @@ void connectRequest(int sd,struct rival*opp){
 	riceviByte(sd,user,dim);
 	strcpy(opp->user,user);
 	opp->udp=quantiByte(sd); //ricevo la porta udp
+	dim=quantiByte(sd);
+	riceviByte(sd,opp->ip,dim);
+//	printf("ip avversario %s\n",opp->ip );
 	printf("Ti vuoi connettere con il client %s y/n?\n",user);
 }
 void decripta(int cod, int sd,struct rival *opp,enum StatoCasella *b){
@@ -381,10 +390,16 @@ void decripta(int cod, int sd,struct rival *opp,enum StatoCasella *b){
 			connectRequest(sd,opp);
 			break;
 		case COD_CON_ACC:       
+			printf("richiesta di connessione accettata con: %s\n",opp->user);
+			opp->udp=quantiByte(sd);
+			int dim=quantiByte(sd);
+			riceviByte(sd,opp->ip,dim);
+		//	printf("ip avversario %s\n",opp->ip );
 			inGame=true;   
 			waitingConnect=false;  
-			printf("richiesta di connessione accettata con: %s\n",opp->user);
 			posizionaNavi(b);
+			helpGame();
+			myturn=true;
 			break;
 		case DISCONNECT:
 			naviDaPosizionare=true;
@@ -392,6 +407,7 @@ void decripta(int cod, int sd,struct rival *opp,enum StatoCasella *b){
 			resettaGriglia(tabellaAvversaria);
 			printf("HAI VINTO!!! %s si è arreso\n",opp->user);
 			opp->udp=0;
+			strcpy(opp->ip,"");
 			break;
 		printf("codifica non riconosciuta\n");
 		break;
@@ -401,6 +417,7 @@ void decripta(int cod, int sd,struct rival *opp,enum StatoCasella *b){
 int main(int argc,char* argv[]) {
 	struct rival opponent;//=(struct rival*)malloc(sizeof(struct rival));
 	opponent.udp=0;
+	strcpy(opponent.ip,"");
     strcpy(username,"");
     waitingConnect=false;
     naviDaPosizionare=false;
@@ -443,7 +460,31 @@ int main(int argc,char* argv[]) {
     FD_ZERO(&master);
     FD_ZERO(&read);
 
-    FD_SET(udp,&master);
+    int sudp= socket(AF_INET,SOCK_DGRAM, 0);												//socket di ascolto udp
+
+    struct sockaddr_in my_addr;
+    memset(&server,0,sizeof(my_addr));
+    my_addr.sin_family=AF_INET;
+    my_addr.sin_port=htons(udp);
+    my_addr.sin_addr.s_addr=INADDR_ANY;
+    ret=bind(sudp,(struct sockaddr*)&my_addr,sizeof(my_addr));
+    if(ret==-1){
+    	perror("bind ");
+    	exit(1);
+    }
+
+  /*  struct sockaddr_in client_addr;
+    memset(&client_addr,0,sizeof(client_addr));
+    my_addr.sin_family=AF_INET;
+  //  my_addr.sin_port=htons(udp);
+   
+    ret=bind(sudp,(struct sockaddr*)&my_addr,sizeof(my_addr));
+    if(ret==-1){
+    	perror("bind ");
+    	exit(1);
+    }*/
+
+    FD_SET(sudp,&master);
     FD_SET(sd,&master);
     FD_SET(0,&master);
     fdmax=sd;
@@ -456,12 +497,14 @@ int main(int argc,char* argv[]) {
 	    	printf("> ");
 	        fflush(stdout);
 	    }else{   
-	    	printf("valore di naviDaPosizionare: %d",naviDaPosizionare); 
+	    	/*printf("valore di naviDaPosizionare: %d",naviDaPosizionare); 
 	        if(naviDaPosizionare){
 	      // 		posizionaNavi(tabella);	
 	       		helpGame();
 	       		naviDaPosizionare=false;
-	       	}
+	       	}*/
+	       	if(myturn)
+	       		printf("è il tuo turno\n");
 	        printf("# ");
 	        fflush(stdout);	
 	    }
@@ -478,7 +521,7 @@ int main(int argc,char* argv[]) {
                     ///richiesta dal server controllo codifica connect 
                 }else if (i==0){
                     inserisciComando(sd,buf,username,&opponent,tabella);
-                }else if(i==udp){
+                }else if(i==sudp){
                 	//qua ci sono i comandi di gioco 
                 }
             }

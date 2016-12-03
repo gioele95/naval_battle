@@ -28,7 +28,7 @@
 #define DISCONNECT 13
 
 #define QUEUE_LEN 10
-
+#define IP_LEN 16
 
 //DISCONNETTITI CON IL I
 
@@ -42,7 +42,7 @@ struct listaClient{
 	struct listaClient * next; 
 	int porta; 
 	char username[USERNAME_LEN];
-	char ip[16];
+	char ip[IP_LEN];
 	enum statoClient stato;
 	char rival[USERNAME_LEN];
 };
@@ -233,6 +233,8 @@ void connectUser(int i,struct listaClient*p){
 	dim=strlen(sender->username)+1;
 	inviaByte(target->socket,dim,sender->username); //username
 	inviaInt(target->socket,target->porta); //udp
+	dim=strlen(sender->ip)+1;
+	inviaByte(target->socket,dim,sender->ip); //ip
 }
 void gameAccepted(int i,struct listaClient * testa){
 	struct listaClient * p=testa;
@@ -248,6 +250,10 @@ void gameAccepted(int i,struct listaClient * testa){
 	}
 	printf("il client %s ha accettato la partita con %s\n",testa->username,testa->rival);
 	inviaInt(p->socket,COD_CON_ACC);
+	inviaInt(p->socket,testa->porta);
+	int dim=strlen(testa->ip)+1;
+	printf("invio a %s l'ip :%s\n",p->username,p->ip);
+	inviaByte(p->socket,dim,testa->ip);
 }
 void gameRefused(int i,struct listaClient * testa){
 	struct listaClient * p=testa;
