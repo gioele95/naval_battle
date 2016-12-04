@@ -22,15 +22,20 @@
 #define COD_CON_REF_OCC 11
 #define COD_CON_REFUSED 12
 #define DISCONNECT 13
+#define SHOT_DIM 3
+#define YOU_WON 14
+#define COD_SHOT 15
+#define COD_HIT 16
 
 #define USERNAME_LEN 30
 #define COD_FAST_QUIT 7
 #define IP_LEN 16
+
 //DEVI RICAVARE L?IP PER POI MANDARE UDP E POI FARE LA INETPTON
 
 enum StatoCasella{OCCUPATA,COLPITA,MANCATA,VUOTO};
 // nave posizionata o //nave non colpita ~ // nave colpita     x	// Vuoto ?
-int sd;
+int sd,sudp;
 char username[USERNAME_LEN];
 int waitingConnect;
 int inGame;
@@ -39,6 +44,7 @@ int naviRimaste;
 int naviDaPosizionare;
 enum StatoCasella tabella[36];
 enum StatoCasella tabellaAvversaria[36];
+struct rival opponent;//=(struct rival*)malloc(sizeof(struct rival));
 
 struct rival{
 	char user[USERNAME_LEN];
@@ -105,34 +111,50 @@ void resettaGriglia(enum StatoCasella*b){
 		b[i]=VUOTO;
 	}
 }
+int controllaCasella(char *buf,enum StatoCasella s,enum StatoCasella *b,int*xx,int*yy){
+	if(strlen(buf)!=3){
+		printf("casella non valida \n");
+		return true;
+	}
+	int y=atoi((const char*)&buf[2]);
+	char *p=strtok(buf,",");
+	if(p==NULL){
+		printf("casella non valida \n");
+		return true;
+	}
+	int x=ottieniX(p);
+	if(x==-1 || y>6 || y<1){
+		printf("casella non valida \n");
+		return true;
+	}
+	if(	b[x-1+(y-1)*6]!=VUOTO&& s==VUOTO){
+		printf("nave già posizionata in questa casella \n");
+		return true;
+	}
+	if(	b[x-1+(y-1)*6]!=VUOTO&& s==VUOTO){
+		printf("nave già posizionata in questa casella \n");
+		return true;
+	}
+	if(	b[x-1+(y-1)*6]!=VUOTO&& s==MANCATA){
+		printf("hai già colpito questa casella \n");
+		return true;
+	}
+	*xx=x;
+	*yy=y;
+	return false;
+}
 void posizionaNavi(enum StatoCasella *b){
 	resettaGriglia(b);
 	int i=0;
 	int x,y;
 	char buf[4];
+	//scanf("%s",buf);
 	printf("\rInserire le coordinate in cui posizionare le 7 navi indicando le caselle [A-F],[1-6] separate da virgola\n");
 	
 	while (i<7){
 		scanf("%s",buf);
-		if(strlen(buf)!=3){
-			printf("casella non valida \n");
+		if(controllaCasella(buf,VUOTO,b,&x,&y))
 			continue;
-		}
-		y=atoi((const char*)&buf[2]);
-		char *p=strtok(buf,",");
-		if(p==NULL){
-			printf("casella non valida \n");
-			continue;
-		}
-		x=ottieniX(p);
-		if(x==-1 || y>6 || y<1){
-			printf("casella non valida \n");
-			continue;
-		}
-		if(	b[x-1+(y-1)*6]!=VUOTO){
-			printf("nave già posizionata in questa casella \n");
-			continue;
-		}
 		b[x-1+(y-1)*6]=OCCUPATA;
 		i++;
 	}
@@ -149,6 +171,32 @@ void inviaInt(int sd, int msgl){
 		exit(1);
 	}
 }
+void inviaIntUdp(int sd, int msgl,struct sockaddr_in*cl){
+	/*struct sockaddr_in client;
+	memset(&client,0,sizeof(client));
+	client.sin_family=AF_INET;
+	client.sin_port=htons(opponent.udp);
+	socklen_t addrlen=sizeof(client);
+	inet_pton(AF_INET,opponent.ip,&client.sin_addr);*/
+	int ret;
+	int msg=htonl(msgl);
+	printf("\rinvio al client il numero %d \n",ntohl(msg ));
+	//printf("ip client %s\n",client.sin_addr );
+	//printf("potra client %d\n", ntohs(client.sin_port));
+	ret=sendto(sd,(void*)&msg,sizeof(int),0,(struct sockaddr*)cl,sizeof(*cl));
+	printf("ho inviato al client %d byte\n", ret);
+	if(ret==-1){
+		perror("Errore nell'invio dell'intero al client");
+		exit(1);
+	}
+}
+void initializeSockaddr(char * ip, int p,struct sockaddr_in*cl){
+	memset(cl,0,sizeof(*cl));
+
+	cl->sin_family=AF_INET;
+	cl->sin_port=htons(p);
+	inet_pton(AF_INET,ip,&cl->sin_addr);
+}
 void help(){
 	printf("\nSono disponibili i seguenti comandi:\n!help --> mostra l'elenco dei comandi disponibili \n!who --> mostra l'elenco dei client connessi al server\n!connect username --> avvia una partita con l'utente username\n!quit --> disconnette il client dal server\n");	
 }
@@ -159,6 +207,22 @@ int quantiByte(int i){
 	int ret;
 	uint32_t dimMsg;
 	ret=recv(i,(void*)&dimMsg,sizeof(int),0);
+	controllaReceive(ret);
+	int dimMsg2=(int)ntohl(dimMsg);
+	printf("\rbyte ricevuti: %d \n",ret);
+	if(ret==0){
+		printf("Il server si è disconnesso\n");
+		close(sd);
+		exit(1);
+	}
+	printf("\ril server vuole mandare %d byte\n",dimMsg2 );
+	return dimMsg2;
+}
+int quantiByteUdp(int i,struct sockaddr_in*cl){
+	int ret;
+	uint32_t dimMsg;
+	socklen_t addrlen=sizeof(*cl);
+	ret=recvfrom(i,(void*)&dimMsg,sizeof(int),0,(struct sockaddr*)cl,&addrlen);
 	controllaReceive(ret);
 	int dimMsg2=(int)ntohl(dimMsg);
 	printf("\rbyte ricevuti: %d \n",ret);
@@ -241,8 +305,37 @@ void disconnect(int sd){
 	printf("Ti sei disconnesso correttamente: TI SEI ARRESO\n");
 	resettaGriglia(tabellaAvversaria);
 }
-void inserisciComando(int sd,char *buf,char*username,struct rival*opp,enum StatoCasella *b){
+void shot(struct sockaddr_in*cl,struct rival*opp,int *x,int *y){
+	char buf[5];
+	scanf("%4s",buf);
+	printf("invio la casella %s\n",buf);
+	if(controllaCasella(buf,MANCATA,tabellaAvversaria,x,y)){
+		printf("casella non valida o hai già colpito sulla suddetta\n");
+		return;
+	}
+	//initializeSockaddr(opp->ip, opp->udp,cl);
+	inviaIntUdp(sudp,COD_SHOT,cl);
+	inviaIntUdp(sudp,SHOT_DIM,cl);
+	int ret=sendto(sudp,buf,SHOT_DIM,0,(struct sockaddr*)cl,sizeof(*cl));
+	printf("il valore di ritorno della shot %d\n",ret );
+	if(ret==-1){
+		perror("sendto");
+		exit(1);
+	}
+	myturn=false; ///DA QUA IN POI DEVO METTERE TUTTO NELLA SELECT E POI DISCRIMINARE LE SCELTE MANDANDO PRIMA CODIFICA E POI O INTERO O CASELLA
+	/*int hit=quantiByteUdp(sudp,cl);
+	if(hit){
+		printf("Hai colpito l'avversario\n");
+		tabellaAvversaria[x-1+(y-1)*6]=COLPITA;
+	}
+	else{
+		printf("Hai mancato\n");
+		tabellaAvversaria[x-1+(y-1)*6]=MANCATA;
+	}*/
+}
+void inserisciComando(int sd,char *buf,char*username,struct rival*opp,enum StatoCasella *b,struct sockaddr_in*cl,int *x,int*y){
 		scanf("%19s",buf); ///scanf/"%ms",&buf delego al SO
+		printf("%s\n",buf );
 		if(strcmp("!quit",buf)==0&&inGame==false){
 			quit(sd,username);
 			exit(0);
@@ -273,6 +366,7 @@ void inserisciComando(int sd,char *buf,char*username,struct rival*opp,enum Stato
 		if((strcmp("y",buf)==0)&&(opp->udp!=0)){
 			printf("Hai accettato la partita con %s\n",opp->user);
 			printf("sulla porta: %d\n",opp->udp );
+			initializeSockaddr(opp->ip, opp->udp,cl);
 			inviaInt(sd,COD_CON_ACC);
 			waitingConnect=false;
 			myturn=false;
@@ -295,6 +389,15 @@ void inserisciComando(int sd,char *buf,char*username,struct rival*opp,enum Stato
 			stampa(tabella);
 			printf("Stampo la griglia avversaria\n");
 			stampa(tabellaAvversaria);
+			return;
+		}
+		if((strcmp("!shot",buf)==0)&&(myturn)){
+			printf("sparo\n");
+			shot(cl,opp,x,y);
+			return;
+		}
+		if((strcmp("!shot",buf)==0)&&(!myturn)){
+			printf("non puoi sparare non è il tuo turno\n");
 			return;
 		}
 		printf("Comando digitato non riconosciuto, riprovare\n");
@@ -351,7 +454,8 @@ void recvWho(int sd){
 	printf("Clienti connessi al server:\n");
 	printf("%s\n",buf );
 }
-void connectRequest(int sd,struct rival*opp){
+
+void connectRequest(int sd,struct rival*opp,struct sockaddr_in*cl){
 	int dim=quantiByte(sd);
 	char user[dim];
 	riceviByte(sd,user,dim);
@@ -360,9 +464,11 @@ void connectRequest(int sd,struct rival*opp){
 	dim=quantiByte(sd);
 	riceviByte(sd,opp->ip,dim);
 //	printf("ip avversario %s\n",opp->ip );
+	initializeSockaddr(opp->ip, opp->udp,cl);
 	printf("Ti vuoi connettere con il client %s y/n?\n",user);
 }
-void decripta(int cod, int sd,struct rival *opp,enum StatoCasella *b){
+
+void decripta(int cod, int sd,struct rival *opp,enum StatoCasella *b,struct sockaddr_in*cl){
 	printf("sto decriptando\n");
 	switch(cod){
 		case COD_WHO:
@@ -387,7 +493,7 @@ void decripta(int cod, int sd,struct rival *opp,enum StatoCasella *b){
 		case COD_CON_REQ:            //richiesta di connessione di un altro socket
 			naviDaPosizionare=true;
 			printf("richiesta di connessione\n");
-			connectRequest(sd,opp);
+			connectRequest(sd,opp,cl);
 			break;
 		case COD_CON_ACC:       
 			printf("richiesta di connessione accettata con: %s\n",opp->user);
@@ -395,6 +501,7 @@ void decripta(int cod, int sd,struct rival *opp,enum StatoCasella *b){
 			int dim=quantiByte(sd);
 			riceviByte(sd,opp->ip,dim);
 		//	printf("ip avversario %s\n",opp->ip );
+			initializeSockaddr(opp->ip, opp->udp,cl);
 			inGame=true;   
 			waitingConnect=false;  
 			posizionaNavi(b);
@@ -413,9 +520,59 @@ void decripta(int cod, int sd,struct rival *opp,enum StatoCasella *b){
 		break;
 	}
 }
+void riceviUdp(struct sockaddr_in*cl){
+	char buf[4];
+	int ret;
+	socklen_t addrlen=sizeof(*cl);
+	int dim =quantiByteUdp(sudp,cl);
+	ret=recvfrom(sudp,(void*)buf,dim,0,(struct sockaddr*)cl,&addrlen);
+	printf("l'avversario ha sparato in %s\n", buf);
+	if(ret==-1){
+		printf("errore recvfrom\n");
+		exit(1);
+	}
+	int y=atoi((const char*)&buf[2]);
+	char *p=strtok(buf,",");
+	int x=ottieniX(p);
+	myturn=true;
+	inviaIntUdp(sudp,COD_HIT,cl);
+	if(tabella[x-1+(y-1)*6]==VUOTO){
+		inviaIntUdp(sudp,false,cl);
+		tabella[x-1+(y-1)*6]=MANCATA;
+		return;
+	}
+	naviRimaste--;
+	tabella[x-1+(y-1)*6]=COLPITA;
+	if(naviRimaste==0)
+		inviaIntUdp(sudp,YOU_WON,cl);
+	else
+		inviaIntUdp(sudp,true,cl);
 
+}
+
+void decriptaUdp (int cod,struct sockaddr_in*cl,int *x,int *y){
+	printf("sto decriptando\n");
+	switch(cod){
+		case COD_SHOT:
+			printf("ricevuta una shot\n");
+			riceviUdp(cl);
+			break;
+		case true:
+			printf("Hai colpito l'avversario\n");
+			tabellaAvversaria[*x-1+(*y-1)*6]=COLPITA;
+			break;
+		case false:
+			printf("Hai mancato l'avversario\n");
+			tabellaAvversaria[*x-1+(*y-1)*6]=MANCATA;
+			break;
+		case YOU_WON:
+			break;
+		printf("codifica non riconosciuta\n");
+		break;
+	}
+}
 int main(int argc,char* argv[]) {
-	struct rival opponent;//=(struct rival*)malloc(sizeof(struct rival));
+	
 	opponent.udp=0;
 	strcpy(opponent.ip,"");
     strcpy(username,"");
@@ -460,34 +617,27 @@ int main(int argc,char* argv[]) {
     FD_ZERO(&master);
     FD_ZERO(&read);
 
-    int sudp= socket(AF_INET,SOCK_DGRAM, 0);												//socket di ascolto udp
+    sudp= socket(AF_INET,SOCK_DGRAM, 0);												//socket di ascolto udp
 
-    struct sockaddr_in my_addr;
+    struct sockaddr_in my_addr,client;
     memset(&server,0,sizeof(my_addr));
     my_addr.sin_family=AF_INET;
     my_addr.sin_port=htons(udp);
     my_addr.sin_addr.s_addr=INADDR_ANY;
+
     ret=bind(sudp,(struct sockaddr*)&my_addr,sizeof(my_addr));
     if(ret==-1){
     	perror("bind ");
     	exit(1);
     }
 
-  /*  struct sockaddr_in client_addr;
-    memset(&client_addr,0,sizeof(client_addr));
-    my_addr.sin_family=AF_INET;
-  //  my_addr.sin_port=htons(udp);
-   
-    ret=bind(sudp,(struct sockaddr*)&my_addr,sizeof(my_addr));
-    if(ret==-1){
-    	perror("bind ");
-    	exit(1);
-    }*/
-
     FD_SET(sudp,&master);
     FD_SET(sd,&master);
     FD_SET(0,&master);
-    fdmax=sd;
+    if(sd>sudp)
+    	fdmax=sd;
+    else
+    	fdmax=sudp;
     int i;
 
     int naviDaPosizionare=true;
@@ -508,21 +658,31 @@ int main(int argc,char* argv[]) {
 	        printf("# ");
 	        fflush(stdout);	
 	    }
+	    int x,y;
         read=master;
+     //   socklen_t addrlen=sizeof(client);
         select(fdmax+1,&read,NULL,NULL,NULL);
         for(i=0;i<=fdmax;i++){
             if(FD_ISSET(i,&read)){
+            	/*////
+            	memset(&client,0,sizeof(client));
+				client.sin_family=AF_INET;
+				client.sin_port=htons(opponent.udp);
+				inet_pton(AF_INET,opponent.ip,&client.sin_addr);
+				////*/
                 if(i==sd){
                 	printf("richiesta dal server\n");
                 	int cod=quantiByte(sd);
                 	printf("%d\n",cod );
-                	decripta(cod,i,&opponent,tabella);
+                	decripta(cod,i,&opponent,tabella,&client);
                 	///DECRIPTA   
                     ///richiesta dal server controllo codifica connect 
                 }else if (i==0){
-                    inserisciComando(sd,buf,username,&opponent,tabella);
+                    inserisciComando(sd,buf,username,&opponent,tabella,&client,&x,&y);
                 }else if(i==sudp){
-                	//qua ci sono i comandi di gioco 
+                	printf("(sudp pronto)\n");
+                	int cod=quantiByteUdp(i,&client);
+                	decriptaUdp(cod,&client,&x,&y);
                 }
             }
     
