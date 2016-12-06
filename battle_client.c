@@ -41,7 +41,7 @@ int waitingConnect;
 int inGame;
 int myturn;
 int naviRimaste;
-int naviDaPosizionare;
+//int naviDaPosizionare;
 enum StatoCasella tabella[36];
 enum StatoCasella tabellaAvversaria[36];
 struct rival opponent;//=(struct rival*)malloc(sizeof(struct rival));
@@ -292,7 +292,7 @@ void connectUser(int sd,struct rival*opp){
 	inviaByte(sd,dimMsg,user);
 }
 void disconnect(int sd){
-	naviDaPosizionare=true;
+	//naviDaPosizionare=true;
 	inGame=false;
 	inviaInt(sd,DISCONNECT);
 	printf("Ti sei disconnesso correttamente: TI SEI ARRESO\n");
@@ -349,7 +349,7 @@ void inserisciComando(int sd,char *buf,char*username,struct rival*opp,enum Stato
 		if(strcmp("!connect",buf)==0&&inGame==false){ /// PRENDI USERNAME SUBITO
 			connectUser(sd,opp);
 			printf("ritorno da connectUser\n");
-			naviDaPosizionare=true;
+		//	naviDaPosizionare=true;
 			return;//continue;
 		}
 		if(strcmp("!who",buf)==0&&inGame==false){
@@ -485,7 +485,7 @@ void decripta(int cod, int sd,struct rival *opp,enum StatoCasella *b,struct sock
          	waitingConnect=false;
 			break;
 		case COD_CON_REQ:            //richiesta di connessione di un altro socket
-			naviDaPosizionare=true;
+		//	naviDaPosizionare=true;
 			printf("richiesta di connessione\n");
 			connectRequest(sd,opp,cl);
 			break;
@@ -505,7 +505,7 @@ void decripta(int cod, int sd,struct rival *opp,enum StatoCasella *b,struct sock
 		case DISCONNECT:
 			if(inGame==true){
 				naviRimaste=7;
-				naviDaPosizionare=true;
+			//	naviDaPosizionare=true;
 				inGame=false;
 				resettaGriglia(tabellaAvversaria);
 				printf("HAI VINTO!!! %s si è arreso\n",opp->user);
@@ -539,13 +539,13 @@ void riceviUdp(struct sockaddr_in*cl){
 		return;
 	}
 	printf("HAi perrso una nave\n");
-	naviRimaste=--;
+	naviRimaste--;
 	tabella[x-1+(y-1)*6]=COLPITA;
 	if(naviRimaste==0){
 		naviRimaste=7;
 		inviaIntUdp(sudp,YOU_WON,cl);
 		printf("HAI PERSO :( :( :( \n");
-		naviDaPosizionare=true;
+	//	naviDaPosizionare=true;
 		inGame=false;
 		resettaGriglia(tabellaAvversaria);
 		opponent.udp=0;
@@ -575,7 +575,7 @@ void decriptaUdp (int cod,struct sockaddr_in*cl,int *x,int *y){
 		case YOU_WON:
 			printf("HAI VINTO!!!!!!!!!!!!\n");
 			naviRimaste=7;
-			naviDaPosizionare=true;
+			//naviDaPosizionare=true;
 			inGame=false;
 			resettaGriglia(tabellaAvversaria);
 			opponent.udp=0;
@@ -591,7 +591,7 @@ int main(int argc,char* argv[]) {
 	strcpy(opponent.ip,"");
     strcpy(username,"");
     waitingConnect=false;
-    naviDaPosizionare=false;
+  //  naviDaPosizionare=false;
     resettaGriglia (tabellaAvversaria);
    	inGame=false;
     if (signal(SIGINT, mysigint) == SIG_ERR)
@@ -654,7 +654,7 @@ int main(int argc,char* argv[]) {
     	fdmax=sudp;
     int i;
 
-    int naviDaPosizionare=true;
+  //  int naviDaPosizionare=true;
 
     for(;;){
     	if(inGame==false){
