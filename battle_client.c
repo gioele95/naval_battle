@@ -30,7 +30,7 @@
 #define USERNAME_LEN 30
 #define COD_FAST_QUIT 7
 #define IP_LEN 16
-
+#define N_NAVI 7
 //DEVI RICAVARE L?IP PER POI MANDARE UDP E POI FARE LA INETPTON
 
 enum StatoCasella{OCCUPATA,COLPITA,MANCATA,VUOTO};
@@ -151,7 +151,7 @@ void posizionaNavi(enum StatoCasella *b){
 	//scanf("%s",buf);
 	printf("\rInserire le coordinate in cui posizionare le 7 navi indicando le caselle [A-F],[1-6] separate da virgola\n");
 	
-	while (i<7){
+	while (i<N_NAVI){
 		scanf("%s",buf);
 		if(controllaCasella(buf,VUOTO,b,&x,&y))
 			continue;
@@ -342,7 +342,7 @@ void inserisciComando(int sd,char *buf,char*username,struct rival*opp,enum Stato
 			return;//continue;
 		}
 		if(strcmp("!disconnect",buf)==0&&inGame==true){
-			naviRimaste=7;
+			naviRimaste=N_NAVI;
 			disconnect(sd);
 			return;//continue;
 		}
@@ -504,7 +504,7 @@ void decripta(int cod, int sd,struct rival *opp,enum StatoCasella *b,struct sock
 			break;
 		case DISCONNECT:
 			if(inGame==true){
-				naviRimaste=7;
+				naviRimaste=N_NAVI;
 			//	naviDaPosizionare=true;
 				inGame=false;
 				resettaGriglia(tabellaAvversaria);
@@ -542,7 +542,7 @@ void riceviUdp(struct sockaddr_in*cl){
 	naviRimaste--;
 	tabella[x-1+(y-1)*6]=COLPITA;
 	if(naviRimaste==0){
-		naviRimaste=7;
+		naviRimaste=N_NAVI;
 		inviaIntUdp(sudp,YOU_WON,cl);
 		printf("HAI PERSO :( :( :( \n");
 	//	naviDaPosizionare=true;
@@ -574,7 +574,7 @@ void decriptaUdp (int cod,struct sockaddr_in*cl,int *x,int *y){
 			break;
 		case YOU_WON:
 			printf("HAI VINTO!!!!!!!!!!!!\n");
-			naviRimaste=7;
+			naviRimaste=N_NAVI;
 			//naviDaPosizionare=true;
 			inGame=false;
 			resettaGriglia(tabellaAvversaria);
@@ -586,7 +586,7 @@ void decriptaUdp (int cod,struct sockaddr_in*cl,int *x,int *y){
 	}
 }
 int main(int argc,char* argv[]) {
-	naviRimaste=7;
+	naviRimaste=N_NAVI;
 	opponent.udp=0;
 	strcpy(opponent.ip,"");
     strcpy(username,"");

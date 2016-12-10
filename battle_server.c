@@ -135,7 +135,9 @@ int lunghezzaStato(enum statoClient s){
 }
 void inviaByte(int sd, int dim, void * msg){
 	int ret;
+	printf("voglio mandare al client %d byte\n",sd );
 	inviaInt(sd,dim);
+	printf("invio al client %s\n",(char*)msg);
 	ret=send(sd,msg,dim,0);
 	if(ret==-1){
 		perror("Errore nell'invio delle informazioni al client");
@@ -151,7 +153,7 @@ void who(int i,struct listaClient * p){//faccio una stima di 20 char per client
 		if(p->porta!=0){
 			d=strlen(p->username)+2+lunghezzaStato(p->stato);
 			dim-=d;
-			if(dim>=0){
+			if(dim>0){
 				strcat(buf,p->username);
 				if(p->stato==LIBERO)
 					strcat(buf,"(libero)");
@@ -165,7 +167,7 @@ void who(int i,struct listaClient * p){//faccio una stima di 20 char per client
 				dim-=strlen(buf);
 				free((void*)buf);
 				buf=app;
-				i++;
+				ii++;
 				continue;	
 			}
 		}
@@ -174,8 +176,10 @@ void who(int i,struct listaClient * p){//faccio una stima di 20 char per client
 	}
 	printf("invio nella who di: %s\n a",buf );
 	dim=strlen(buf)+1;
+	printf("invio al client COD_WHO: %d\n",COD_WHO);
 	inviaInt(i,COD_WHO);
 	inviaByte(i,dim,buf);
+	free(buf);
 }
 void rimuoviDaLista(int i,struct listaClient ** testa){
 	struct listaClient * p=*testa;
