@@ -292,6 +292,7 @@ void connectUser(int sd,struct rival*opp){
 	inviaByte(sd,dimMsg,user);
 }
 void disconnect(int sd){
+	myturn=false;
 	inGame=false;
 	inviaInt(sd,DISCONNECT);
 	printf("Ti sei disconnesso correttamente\n");
@@ -615,6 +616,7 @@ int main(int argc,char* argv[]) {
     int fdmax;
     FD_ZERO(&master);
     FD_ZERO(&read);
+    
     sudp= socket(AF_INET,SOCK_DGRAM, 0);	
    struct sockaddr_in my_addr,client;
     memset(&server,0,sizeof(my_addr));
@@ -635,6 +637,10 @@ int main(int argc,char* argv[]) {
     else
     	fdmax=sudp;
     int i;
+    struct timeval timeout;
+    timeout.tv_sec=20;
+    timeout.tv_usec=0;
+    int retval;
     for(;;){
     	if(inGame==false){
 	    	printf("> ");
@@ -649,7 +655,19 @@ int main(int argc,char* argv[]) {
 	    }
 	    int x,y;
         read=master;
-        select(fdmax+1,&read,NULL,NULL,NULL);
+        retval=select(fdmax+1,&read,NULL,NULL,&timeout);
+        if(retval==0){
+        	timeout.tv_sec=20;
+        	if(inGame){
+	        	printf("timeout scaduto\n");
+	        	if(myturn){
+	        		//myturn=false;
+	        		disconnect(sd);
+					printf("TI SEI ARRESO\n");
+	        	}
+	        }
+        	continue;
+        }
         for(i=0;i<=fdmax;i++){
             if(FD_ISSET(i,&read)){
                 if(i==sd){
@@ -666,6 +684,7 @@ int main(int argc,char* argv[]) {
             }
     
         }
+     
 
     }
     return 0;
