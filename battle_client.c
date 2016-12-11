@@ -32,6 +32,7 @@
 #define IP_LEN 16
 #define N_NAVI 7
 #define SQUARE_DIM 3
+#define TIMEOUT 20
 #define DIM_TABELLA 36
 //DEVI RICAVARE L?IP PER POI MANDARE UDP E POI FARE LA INETPTON
 
@@ -42,6 +43,7 @@ char username[USERNAME_LEN];
 int waitingConnect;
 int inGame;
 int myturn;
+int infoInviate;
 int naviRimaste;
 //int naviDaPosizionare;
 enum StatoCasella tabella[DIM_TABELLA];
@@ -53,6 +55,7 @@ struct rival{
 	int udp;
 	char ip[IP_LEN];
 };
+
 int insert(char*buf,int dim){
     char *foo; 
     memset(buf,0,dim);
@@ -147,26 +150,6 @@ int controllaCasella(char *buf,enum StatoCasella s,enum StatoCasella *b,int*xx,i
 	*yy=y;
 	return false;
 }
-void posizionaNavi(enum StatoCasella *b){
-	resettaGriglia(b);
-	int i=0;
-	int x,y;
-	char buf[4];
-	printf("\rInserire le coordinate in cui posizionare le %d navi indicando le caselle [A-F],[1-6] separate da virgola\n",N_NAVI);
-	int ret;
-	while (i<N_NAVI){
-		ret=insert(buf,SQUARE_DIM);
-		if(ret==-1){
-			printf("casella non valida\n");
-			continue;
-		}
-		if(controllaCasella(buf,VUOTO,b,&x,&y))
-			continue;
-		b[x-1+(y-1)*6]=OCCUPATA;
-		i++;
-	}
-	stampa(b);
-}
 void inviaInt(int sd, int msgl){
 	int ret;
 	int msg=htonl(msgl);
@@ -176,6 +159,88 @@ void inviaInt(int sd, int msgl){
 		exit(1);
 	}
 }
+int quantiByte(int i){
+	int ret;
+	uint32_t dimMsg;
+	ret=recv(i,(void*)&dimMsg,sizeof(int),0);
+	controllaReceive(ret);
+	int dimMsg2=(int)ntohl(dimMsg);
+	printf("\rbyte ricevuti: %d \n",ret);
+	if(ret==0){
+		printf("Il server si è disconnesso\n");
+		close(sd);
+		exit(1);
+	}
+	printf("\ril server vuole mandare %d byte\n",dimMsg2 );
+	return dimMsg2;
+}
+void disconnect(int sd){
+	myturn=false;
+	inGame=false;
+	inviaInt(sd,DISCONNECT);
+	printf("Ti sei disconnesso correttamente\n");
+	resettaGriglia(tabellaAvversaria);
+}
+int posizionaNavi(enum StatoCasella *b,int t){
+	resettaGriglia(b);
+	int j,i=0;
+	int x,y,retval;
+	char buf[4];
+	printf("\rInserire le coordinate in cui posizionare le %d navi indicando le caselle [A-F],[1-6] separate da virgola\n",N_NAVI);
+	int ret;
+	fd_set master;
+    fd_set read;
+    int fdmax=sd;
+    FD_ZERO(&master);
+    FD_ZERO(&read);
+    FD_SET(0,&master);
+    FD_SET(sd,&master);
+    struct timeval timeout;
+    timeout.tv_sec=TIMEOUT+t;
+    timeout.tv_usec=0;
+	while (i<N_NAVI){
+		read=master;
+        retval=select(fdmax+1,&read,NULL,NULL,&timeout);
+        timeout.tv_sec=TIMEOUT;
+        if(retval==0){
+        	if(inGame){
+	        	printf("timeout scaduto\n");
+	        	disconnect(sd);
+				printf("TI SEI ARRESO\n");	
+	        }
+	        return false;
+        } 
+        for(j=0;j<=fdmax;j++){
+            if(FD_ISSET(j,&read)){
+            	if(j==0){
+            		printf("inserisco nave\n");
+					ret=insert(buf,SQUARE_DIM);
+					printf("nave: %s\n",buf );
+					if(ret==-1){
+						printf("casella non valida\n");
+						continue;
+					}
+					if(controllaCasella(buf,VUOTO,b,&x,&y))
+						continue;
+					b[x-1+(y-1)*6]=OCCUPATA;
+					i++;
+				}
+				else if (j==sd){
+					ret=quantiByte(sd);
+					if(ret==DISCONNECT){
+						inGame=false;
+						myturn=false;
+						printf("hai vintooooo\n");
+						return false;
+					}
+				}
+			}
+		}
+	}
+	stampa(b);
+	return true;
+}
+
 void inviaIntUdp(int sd, int msgl,struct sockaddr_in*cl){
 	int ret;
 	int msg=htonl(msgl);
@@ -198,21 +263,7 @@ void help(){
 void helpGame(){
 	printf("\nSono disponibili i seguenti comandi:\n!help --> mostra l'elenco dei comandi disponibili \n!disconnect --> disconnette il client dall'attuale partita\n!shot square --> fai un tentativo con la casella square\n!show --> visualizza la griglia di gioco\n");	
 }
-int quantiByte(int i){
-	int ret;
-	uint32_t dimMsg;
-	ret=recv(i,(void*)&dimMsg,sizeof(int),0);
-	controllaReceive(ret);
-	int dimMsg2=(int)ntohl(dimMsg);
-	printf("\rbyte ricevuti: %d \n",ret);
-	if(ret==0){
-		printf("Il server si è disconnesso\n");
-		close(sd);
-		exit(1);
-	}
-	printf("\ril server vuole mandare %d byte\n",dimMsg2 );
-	return dimMsg2;
-}
+
 int quantiByteUdp(int i,struct sockaddr_in*cl){
 	int ret;
 	uint32_t dimMsg;
@@ -291,13 +342,7 @@ void connectUser(int sd,struct rival*opp){
 	printf("sto per mandare al server %s\n", user);
 	inviaByte(sd,dimMsg,user);
 }
-void disconnect(int sd){
-	myturn=false;
-	inGame=false;
-	inviaInt(sd,DISCONNECT);
-	printf("Ti sei disconnesso correttamente\n");
-	resettaGriglia(tabellaAvversaria);
-}
+
 void shot(struct sockaddr_in*cl,struct rival*opp,int *x,int *y){
 	char buf[5];
 	int ret=insert(buf,SQUARE_DIM);
@@ -359,8 +404,9 @@ void inserisciComando(int sd,char *buf,char*username,struct rival*opp,enum Stato
 			waitingConnect=false;
 			myturn=false;
 			inGame=true;
-			posizionaNavi(b);   
-			helpGame();
+			int app=posizionaNavi(b,0);   
+			if(app)
+				helpGame();
 			return;
 		}
 		if((strcmp("n",buf)==0)&&(opp->udp!=0)){
@@ -413,6 +459,7 @@ int inviaInfo(int sd,char *username){
 		int p=quantiByte(sd);
 		if(p==OK){
 			printf("Username accettato dal server\n");
+			infoInviate=true;
 			break;
 		}
 		printf("codice di ritorno %d\n",p );
@@ -422,15 +469,16 @@ int inviaInfo(int sd,char *username){
 }
 void mysigint(){
 	printf("entro nella mysigint\n");
-	if(strcmp(username,"")==0){
+/*	if(infoInviate==false){
 		printf("esco senza cancellarmi\n");
 		inviaInt(sd,COD_FAST_QUIT);
 		close(sd);
 		exit(0);
-	}
+	}*/
 	if(inGame==true){
 		disconnect(sd);
 		printf("TI SEI ARRESO\n");
+		exit(0);
 	}
 	quit(sd,username);
 	exit(0);
@@ -489,9 +537,11 @@ void decripta(int cod, int sd,struct rival *opp,enum StatoCasella *b,struct sock
 			initializeSockaddr(opp->ip, opp->udp,cl);
 			inGame=true;   
 			waitingConnect=false;  
-			posizionaNavi(b);
-			helpGame();
-			myturn=true;
+			int app=posizionaNavi(b,5);
+			if (app){
+				helpGame();
+				myturn=true;
+			}
 			break;
 		case DISCONNECT:
 			if(inGame==true){
@@ -575,6 +625,7 @@ void decriptaUdp (int cod,struct sockaddr_in*cl,int *x,int *y){
 }
 int main(int argc,char* argv[]) {
 	naviRimaste=N_NAVI;
+	infoInviate=false;
 	opponent.udp=0;
 	strcpy(opponent.ip,"");
     strcpy(username,"");
@@ -616,7 +667,7 @@ int main(int argc,char* argv[]) {
     int fdmax;
     FD_ZERO(&master);
     FD_ZERO(&read);
-    
+
     sudp= socket(AF_INET,SOCK_DGRAM, 0);	
    struct sockaddr_in my_addr,client;
     memset(&server,0,sizeof(my_addr));
@@ -638,7 +689,7 @@ int main(int argc,char* argv[]) {
     	fdmax=sudp;
     int i;
     struct timeval timeout;
-    timeout.tv_sec=20;
+    timeout.tv_sec=TIMEOUT;
     timeout.tv_usec=0;
     int retval;
     for(;;){
@@ -655,19 +706,22 @@ int main(int argc,char* argv[]) {
 	    }
 	    int x,y;
         read=master;
-        retval=select(fdmax+1,&read,NULL,NULL,&timeout);
-        if(retval==0){
-        	timeout.tv_sec=20;
-        	if(inGame){
-	        	printf("timeout scaduto\n");
-	        	if(myturn){
-	        		//myturn=false;
-	        		disconnect(sd);
-					printf("TI SEI ARRESO\n");
-	        	}
+        while(1){
+	        retval=select(fdmax+1,&read,NULL,NULL,&timeout);
+	        timeout.tv_sec=TIMEOUT;
+	        if(retval==0){
+	        	if(inGame){
+		        	printf("timeout scaduto\n");
+		        	if(myturn){
+		        		//myturn=false;
+		        		disconnect(sd);
+						printf("TI SEI ARRESO\n");
+		        	}
+		        }
 	        }
-        	continue;
-        }
+	        else
+	        	break;
+	    }
         for(i=0;i<=fdmax;i++){
             if(FD_ISSET(i,&read)){
                 if(i==sd){

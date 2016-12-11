@@ -280,21 +280,25 @@ void gameRefused(int i,struct listaClient * testa){
 }
 void disconnect(int i,struct listaClient * testa){
 	struct listaClient *p=testa;
-	while(p){
+	while(p!=NULL){
 		if(p->socket==i)
 			break;
 		p=p->next;
 	}
+	if(p->stato==LIBERO)
+		return;
 	while(testa!=NULL){                                 ///posso evitare i due while in sequenza aggiungendo una variabile alla struct
 		if(strcmp(testa->username,p->rival)==0)
 			break;
 		testa=testa->next;
 	}
+	
 	testa->stato=LIBERO;
 	p->stato=LIBERO;
 	printf("il client %s si è arreso nella partita con %s\n",p->username,testa->username);
 	strcpy(p->rival,"");
 	strcpy(testa->rival,"");
+	printf("invio a %s la disconnect\n",testa->username );
 	inviaInt(testa->socket,DISCONNECT);
 }
 
@@ -310,6 +314,7 @@ void decripta(int cod, int i,struct listaClient ** testa,fd_set*master){
 			quit(i,testa,master);
 			break;
 		case COD_FAST_QUIT:
+			rimuoviDaLista(i,testa);
 			printf("ricevuta una fast_quit\n");
 			close(i);
 			FD_CLR(i,master);
