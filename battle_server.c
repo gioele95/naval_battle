@@ -181,28 +181,31 @@ void who(int i,struct listaClient * p){//faccio una stima di 20 char per client
 	inviaByte(i,dim,buf);
 	free(buf);
 }
-void rimuoviDaLista(int i,struct listaClient ** testa){
+int rimuoviDaLista(int i,struct listaClient ** testa){
+	int app;
 	struct listaClient * p=*testa;
 	struct listaClient * prev=NULL;
 	while(p!=NULL){
-		if(p->porta!=0){
-			if(i==p->socket){
+		if(i==p->socket){
+			app=p->porta;
+			if(app!=0)
 				printf("rimuovo l'utente username %s\n",p->username );
-				if (prev==0)
-					*testa=p->next;
-				else{
-					prev->next=p->next;
-				}
-				free(p);
+			if (prev==0)
+				*testa=p->next;
+			else{
+				prev->next=p->next;
 			}
+			free(p);
 		}
 		prev=p;
 		p=p->next;
 	}
+	return app;
 }
 void quit(int i,struct listaClient ** testa,fd_set*master){
-	n_client--;
-	rimuoviDaLista(i,testa);
+	int a=rimuoviDaLista(i,testa);
+	if(a!=0)
+		n_client--;
 	close(i);
 	FD_CLR(i,master);
 }
@@ -312,12 +315,6 @@ void decripta(int cod, int i,struct listaClient ** testa,fd_set*master){
 		case COD_QUIT:
 			printf("ricevuta una quit\n");
 			quit(i,testa,master);
-			break;
-		case COD_FAST_QUIT:
-			rimuoviDaLista(i,testa);
-			printf("ricevuta una fast_quit\n");
-			close(i);
-			FD_CLR(i,master);
 			break;
 		case COD_CON_REQ:
 			printf("ricevuta una richiesta di connect\n");

@@ -32,7 +32,7 @@
 #define IP_LEN 16
 #define N_NAVI 7
 #define SQUARE_DIM 3
-#define TIMEOUT 20
+#define TIMEOUT 60
 #define DIM_TABELLA 36
 //DEVI RICAVARE L?IP PER POI MANDARE UDP E POI FARE LA INETPTON
 
@@ -126,7 +126,7 @@ int controllaCasella(char *buf,enum StatoCasella s,enum StatoCasella *b,int*xx,i
 	int y=atoi((const char*)&buf[2]);
 	char *p=strtok(buf,",");
 	if(p==NULL){
-		printf("casella non valida p=null \n");
+		printf("casella non valida  \n");
 		return true;
 	}
 	int x=ottieniX(p);
@@ -165,13 +165,11 @@ int quantiByte(int i){
 	ret=recv(i,(void*)&dimMsg,sizeof(int),0);
 	controllaReceive(ret);
 	int dimMsg2=(int)ntohl(dimMsg);
-	printf("\rbyte ricevuti: %d \n",ret);
 	if(ret==0){
 		printf("Il server si è disconnesso\n");
 		close(sd);
 		exit(1);
 	}
-	printf("\ril server vuole mandare %d byte\n",dimMsg2 );
 	return dimMsg2;
 }
 void disconnect(int sd){
@@ -230,7 +228,7 @@ int posizionaNavi(enum StatoCasella *b,int t){
 					if(ret==DISCONNECT){
 						inGame=false;
 						myturn=false;
-						printf("hai vintooooo\n");
+						printf("hai vinto il client avversario si è disconnesso\n");
 						return false;
 					}
 				}
@@ -311,11 +309,12 @@ void who(int sd){
 	printf("provo invio al server il codice %d \n",COD_WHO);
 	inviaInt(sd,COD_WHO);
 }
-void quit(int sd,char*username){
+void quit(int sd){
 	printf("provo invio al server il codice %d \n",COD_QUIT);
 	inviaInt(sd,COD_QUIT);
 	printf("Mi disconnetto dal server:\n");
 	close(sd);
+	exit(0);
 }
 void connectUser(int sd,struct rival*opp){
 	char user[USERNAME_LEN];
@@ -369,8 +368,7 @@ void inserisciComando(int sd,char *buf,char*username,struct rival*opp,enum Stato
 		scanf("%19s",buf); ///scanf/"%ms",&buf delego al SO
 		printf("%s\n",buf );
 		if(strcmp("!quit",buf)==0&&inGame==false){
-			quit(sd,username);
-			exit(0);
+			quit(sd);
 		}
 		if(strcmp("!help",buf)==0&&inGame==false){
 			help();
@@ -404,7 +402,7 @@ void inserisciComando(int sd,char *buf,char*username,struct rival*opp,enum Stato
 			waitingConnect=false;
 			myturn=false;
 			inGame=true;
-			int app=posizionaNavi(b,0);   
+			int app=posizionaNavi(b,1);   
 			if(app)
 				helpGame();
 			return;
@@ -459,7 +457,6 @@ int inviaInfo(int sd,char *username){
 		int p=quantiByte(sd);
 		if(p==OK){
 			printf("Username accettato dal server\n");
-			infoInviate=true;
 			break;
 		}
 		printf("codice di ritorno %d\n",p );
@@ -469,19 +466,13 @@ int inviaInfo(int sd,char *username){
 }
 void mysigint(){
 	printf("entro nella mysigint\n");
-/*	if(infoInviate==false){
-		printf("esco senza cancellarmi\n");
-		inviaInt(sd,COD_FAST_QUIT);
-		close(sd);
-		exit(0);
-	}*/
 	if(inGame==true){
 		disconnect(sd);
 		printf("TI SEI ARRESO\n");
 		exit(0);
+	}else{
+		quit(sd);
 	}
-	quit(sd,username);
-	exit(0);
 }
 void recvWho(int sd){
 	int dimMsg=quantiByte(sd);
@@ -537,7 +528,7 @@ void decripta(int cod, int sd,struct rival *opp,enum StatoCasella *b,struct sock
 			initializeSockaddr(opp->ip, opp->udp,cl);
 			inGame=true;   
 			waitingConnect=false;  
-			int app=posizionaNavi(b,5);
+			int app=posizionaNavi(b,0);
 			if (app){
 				helpGame();
 				myturn=true;
@@ -669,7 +660,7 @@ int main(int argc,char* argv[]) {
     FD_ZERO(&read);
 
     sudp= socket(AF_INET,SOCK_DGRAM, 0);	
-   struct sockaddr_in my_addr,client;
+    struct sockaddr_in my_addr,client;
     memset(&server,0,sizeof(my_addr));
     my_addr.sin_family=AF_INET;
     my_addr.sin_port=htons(udp);
