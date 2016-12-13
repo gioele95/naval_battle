@@ -26,6 +26,7 @@
 #define YOU_WON 14
 #define COD_SHOT 15
 #define COD_HIT 16
+#define CONN_INFO 17
 
 #define USERNAME_LEN 30
 #define COD_FAST_QUIT 7
@@ -269,7 +270,7 @@ int quantiByteUdp(int i,struct sockaddr_in*cl){
 	ret=recvfrom(i,(void*)&dimMsg,sizeof(int),0,(struct sockaddr*)cl,&addrlen);
 	controllaReceive(ret);
 	int dimMsg2=(int)ntohl(dimMsg);
-	printf("\rbyte ricevuti: %d \n",ret);
+	//printf("\rbyte ricevuti: %d \n",ret);
 	if(ret==0){
 		printf("Il server si è disconnesso\n");
 		close(sd);
@@ -282,7 +283,7 @@ void riceviByte(int i, void*buf,int dimMsg){
 	int ret;
 	ret=recv(i,(void*)buf,dimMsg,0);
 	controllaReceive(ret);
-	printf("\rbyte ricevuti: %d \n \n",ret);
+	//printf("\rbyte ricevuti: %d \n \n",ret);
 }
 void inviaByte(int sd, int dim, void * msg){
 	int ret;
@@ -306,11 +307,11 @@ int insertUsername(char*user){
     return dimMsg;
 }
 void who(int sd){
-	printf("provo invio al server il codice %d \n",COD_WHO);
+	//printf("provo invio al server il codice %d \n",COD_WHO);
 	inviaInt(sd,COD_WHO);
 }
 void quit(int sd){
-	printf("provo invio al server il codice %d \n",COD_QUIT);
+	//printf("provo invio al server il codice %d \n",COD_QUIT);
 	inviaInt(sd,COD_QUIT);
 	printf("Mi disconnetto dal server:\n");
 	close(sd);
@@ -321,7 +322,7 @@ void connectUser(int sd,struct rival*opp){
 	int dimMsg;
 	scanf("%30s",user);
 	dimMsg=strlen(user)+1;
-	printf("%d\n",dimMsg );
+//	printf("%d\n",dimMsg );
 	if(dimMsg>=USERNAME_LEN){
 		printf("comando non valido lo username è troppo lungo\n");
 		return;
@@ -386,7 +387,7 @@ void inserisciComando(int sd,char *buf,char*username,struct rival*opp,enum Stato
 		}
 		if(strcmp("!connect",buf)==0&&inGame==false){ 
 			connectUser(sd,opp);
-			printf("ritorno da connectUser\n");
+		//	printf("ritorno da connectUser\n");
 			return;
 		}
 		if(strcmp("!who",buf)==0&&inGame==false){
@@ -397,20 +398,14 @@ void inserisciComando(int sd,char *buf,char*username,struct rival*opp,enum Stato
 		if((strcmp("y",buf)==0)&&(opp->udp!=0)){
 			printf("Hai accettato la partita con %s\n",opp->user);
 			printf("sulla porta: %d\n",opp->udp );
-			initializeSockaddr(opp->ip, opp->udp,cl);
 			inviaInt(sd,COD_CON_ACC);
-			waitingConnect=false;
-			myturn=false;
-			inGame=true;
-			int app=posizionaNavi(b,1);   
-			if(app)
-				helpGame();
 			return;
 		}
 		if((strcmp("n",buf)==0)&&(opp->udp!=0)){
 			printf("Hai rifiutato la partita con %s\n",opp->user);
 			opp->udp=0;
 			waitingConnect=false;
+			inGame=false;
 			inviaInt(sd,COD_CON_REF);
 			return;
 		}
@@ -452,14 +447,14 @@ int inviaInfo(int sd,char *username){
 		inserisciPorta(&portaAscolto);
 		inviaInt(sd,COD_INFO);
 		inviaInt(sd,portaAscolto);
-		printf("invio :%s\n",username );
+		//printf("invio :%s\n",username );
 		inviaByte(sd,dimMsg,username);
 		int p=quantiByte(sd);
 		if(p==OK){
 			printf("Username accettato dal server\n");
 			break;
 		}
-		printf("codice di ritorno %d\n",p );
+		///printf("codice di ritorno %d\n",p );
 		printf("username già presente sul server: %s\n", username );
 	}
 	return portaAscolto;
@@ -487,18 +482,32 @@ void connectRequest(int sd,struct rival*opp,struct sockaddr_in*cl){
 	char user[dim];
 	riceviByte(sd,user,dim);
 	strcpy(opp->user,user);
-	opp->udp=quantiByte(sd); //ricevo la porta udp
-	dim=quantiByte(sd);
-	riceviByte(sd,opp->ip,dim);
-	initializeSockaddr(opp->ip, opp->udp,cl);
+	opp->udp=-1;
+	inGame=true;
 	printf("Ti vuoi connettere con il client %s y/n?\n",user);
 }
-
+void connectionInfo(struct sockaddr_in*cl){
+	int dim;
+	opponent.udp=quantiByte(sd); //ricevo la porta udp
+	dim=quantiByte(sd);
+	riceviByte(sd,opponent.ip,dim);
+	initializeSockaddr(opponent.ip, opponent.udp,cl);
+	waitingConnect=false;
+	myturn=false;
+	inGame=true;
+	int app=posizionaNavi(tabella,1);   
+	if(app)
+		helpGame();
+	return;
+}
 void decripta(int cod, int sd,struct rival *opp,enum StatoCasella *b,struct sockaddr_in*cl){
-	printf("sto decriptando\n");
+	//printf("sto decriptando\n");
 	switch(cod){
+		case CONN_INFO:
+			connectionInfo(cl);
+			break;
 		case COD_WHO:
-			printf("ricevuta una who\n");
+			//printf("ricevuta una who\n");
 			recvWho(sd);
 			break;
 		case COD_CON_REF:
@@ -517,7 +526,7 @@ void decripta(int cod, int sd,struct rival *opp,enum StatoCasella *b,struct sock
          	waitingConnect=false;
 			break;
 		case COD_CON_REQ:            //richiesta di connessione di un altro socket
-			printf("richiesta di connessione\n");
+			//printf("richiesta di connessione\n");
 			connectRequest(sd,opp,cl);
 			break;
 		case COD_CON_ACC:       
@@ -542,6 +551,11 @@ void decripta(int cod, int sd,struct rival *opp,enum StatoCasella *b,struct sock
 				printf("HAI VINTO!!! %s si è arreso\n",opp->user);
 				opp->udp=0;
 				strcpy(opp->ip,"");
+			}
+			else{
+				waitingConnect=false;
+				resettaGriglia(tabellaAvversaria);
+				printf(" %s si è disconnesso\n",opp->user);
 			}
 			break;
 		printf("codifica non riconosciuta\n");
@@ -716,7 +730,7 @@ int main(int argc,char* argv[]) {
         for(i=0;i<=fdmax;i++){
             if(FD_ISSET(i,&read)){
                 if(i==sd){
-                	printf("richiesta dal server\n");
+                	//printf("richiesta dal server\n");
                 	int cod=quantiByte(sd);
                 	printf("%d\n",cod );
                 	decripta(cod,i,&opponent,tabella,&client);

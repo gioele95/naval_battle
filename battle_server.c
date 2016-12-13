@@ -26,6 +26,7 @@
 #define COD_CON_REF_OCC 11
 #define COD_CON_REFUSED 12
 #define DISCONNECT 13
+#define CONN_INFO 17	
 
 #define QUEUE_LEN 10
 #define IP_LEN 16
@@ -34,8 +35,9 @@
 
 
 int n_client=0;// variabile usata per stimare la dimensione del buffer per lawho
-
+fd_set master;
 enum statoClient{LIBERO,OCCUPATO};
+
 
 struct listaClient{
 	int socket;
@@ -46,17 +48,7 @@ struct listaClient{
 	enum statoClient stato;
 	char rival[USERNAME_LEN];
 };
-void controllaReceive(int ret,int i){
-	if(ret==-1){
-		perror("Errore nella recv");
-	//	exit(1);
-	}
-	if(ret==0){
-		printf("Client disconnesso \n");
-		close(i);
-//		exit(0);
-	}	
-}
+struct listaClient * testa;
 void inviaInt(int sd, int msgl){
 	int ret;
 	int msg=htonl(msgl);
@@ -68,6 +60,67 @@ void inviaInt(int sd, int msgl){
 		//exit(1);
 	}
 }
+int rimuoviDaLista(int i,struct listaClient ** tes){
+	int app;
+	char *c=NULL;
+	char user[USERNAME_LEN];
+	struct listaClient * p=*tes;
+	struct listaClient * prev=NULL;
+	while(p!=NULL){
+		if(i==p->socket){
+			app=p->porta;
+			if(app!=0){
+				printf("rimuovo l'utente username %s\n",p->username );
+				if(p->stato==OCCUPATO){
+					strcpy(user,p->rival);
+					c=p->rival;
+				}
+			}
+			if (prev==0)
+				*tes=p->next;
+			else{
+				prev->next=p->next;
+			}
+			free(p);
+		}
+		prev=p;
+		p=p->next;
+	}
+	if(c!=NULL){
+		p=*tes;
+		while(p!=NULL){
+			if(p->porta!=0 && strcmp(user,p->username)==0){
+				p->stato=LIBERO;
+				break;
+			}
+			p=p->next;
+		}
+		//inviaInt(p->socket,COD_CON_REFUSED);
+	}
+
+	return app;
+}
+void quit(int i){
+	int a=rimuoviDaLista(i,&testa);
+	if(a!=0)
+		n_client--;
+	close(i);
+	FD_CLR(i,&master);
+}
+void controllaReceive(int ret,int i){
+	if(ret==-1){
+		perror("Errore nella recv");
+	//	exit(1);
+	}
+	if(ret==0){
+		printf("Client disconnesso \n");
+		///modifica
+		quit(i);
+
+//		exit(0);
+	}	
+}
+
 void stampaStato(enum statoClient s){
 	if(s==LIBERO)
 		printf("libero)\n");
@@ -90,9 +143,9 @@ void riceviByte(int i, void*buf,int dimMsg){
 	controllaReceive(ret,i);
 	printf("byte ricevuti: %d \n \n",ret);
 }
-void inserimentoLista(struct listaClient ** testa, struct listaClient *p){
-	p->next=*testa;
-	*testa=p;
+void inserimentoLista(struct listaClient ** tes, struct listaClient *p){
+	p->next=*tes;
+	*tes=p;
 }
 void inserimentoDatiLista(int i,char*buf,int udp, struct listaClient *p){
 	//effettua un controllo fai inserimentoLista in coda;
@@ -181,34 +234,8 @@ void who(int i,struct listaClient * p){//faccio una stima di 20 char per client
 	inviaByte(i,dim,buf);
 	free(buf);
 }
-int rimuoviDaLista(int i,struct listaClient ** testa){
-	int app;
-	struct listaClient * p=*testa;
-	struct listaClient * prev=NULL;
-	while(p!=NULL){
-		if(i==p->socket){
-			app=p->porta;
-			if(app!=0)
-				printf("rimuovo l'utente username %s\n",p->username );
-			if (prev==0)
-				*testa=p->next;
-			else{
-				prev->next=p->next;
-			}
-			free(p);
-		}
-		prev=p;
-		p=p->next;
-	}
-	return app;
-}
-void quit(int i,struct listaClient ** testa,fd_set*master){
-	int a=rimuoviDaLista(i,testa);
-	if(a!=0)
-		n_client--;
-	close(i);
-	FD_CLR(i,master);
-}
+
+
 void connectUser(int i,struct listaClient*p){
 	int dim=quantiByte(i);
 	char user[dim];
@@ -239,50 +266,52 @@ void connectUser(int i,struct listaClient*p){
 	inviaInt(target->socket,COD_CON_REQ);   //cod conn
 	dim=strlen(sender->username)+1;
 	inviaByte(target->socket,dim,sender->username); //username
-	inviaInt(target->socket,target->porta); //udp
-	dim=strlen(sender->ip)+1;
-	inviaByte(target->socket,dim,sender->ip); //ip
 }
-void gameAccepted(int i,struct listaClient * testa){
-	struct listaClient * p=testa;
-	while(testa!=NULL){
-		if(testa->socket==i)
+void gameAccepted(int i,struct listaClient * tes){
+	struct listaClient * p=tes;
+	while(tes!=NULL){
+		if(tes->socket==i)
 			break;
-		testa=testa->next;
+		tes=tes->next;
 	}
 	while(p!=NULL){                                 ///posso evitare i due while in sequenza aggiungendo una variabile alla struct
-		if(strcmp(p->username,testa->rival)==0)
+		if(strcmp(p->username,tes->rival)==0)
 			break;
 		p=p->next;
 	}
+	inviaInt(i,CONN_INFO);
+	inviaInt(i,p->porta); //udp
+	int dim=strlen(p->ip)+1;
+	inviaByte(i,dim,p->ip); //ip
+
 	printf("il client %s ha accettato la partita con %s\n",testa->username,testa->rival);
 	inviaInt(p->socket,COD_CON_ACC);
-	inviaInt(p->socket,testa->porta);
-	int dim=strlen(testa->ip)+1;
+	inviaInt(p->socket,tes->porta);
+	dim=strlen(tes->ip)+1;
 	printf("invio a %s l'ip :%s\n",p->username,p->ip);
-	inviaByte(p->socket,dim,testa->ip);
+	inviaByte(p->socket,dim,tes->ip);
 }
-void gameRefused(int i,struct listaClient * testa){
-	struct listaClient * p=testa;
+void gameRefused(int i,struct listaClient * tes){
+	struct listaClient * p=tes;
 	while(testa!=NULL){
 		if(testa->socket==i)
 			break;
-		testa=testa->next;
+		tes=tes->next;
 	}
 	while(p!=NULL){                                 ///posso evitare i due while in sequenza aggiungendo una variabile alla struct
-		if(strcmp(p->username,testa->rival)==0)
+		if(strcmp(p->username,tes->rival)==0)
 			break;
 		p=p->next;
 	}
-	testa->stato=LIBERO;
+	tes->stato=LIBERO;
 	p->stato=LIBERO;
 	printf("il client %s ha rifiutato la partita con %s\n",testa->username,testa->rival);
 	strcpy(p->rival,"");
-	strcpy(testa->rival,"");
+	strcpy(tes->rival,"");
 	inviaInt(p->socket,COD_CON_REFUSED);
 }
-void disconnect(int i,struct listaClient * testa){
-	struct listaClient *p=testa;
+void disconnect(int i,struct listaClient * tes){
+	struct listaClient *p=tes;
 	while(p!=NULL){
 		if(p->socket==i)
 			break;
@@ -290,19 +319,19 @@ void disconnect(int i,struct listaClient * testa){
 	}
 	if(p->stato==LIBERO)
 		return;
-	while(testa!=NULL){                                 ///posso evitare i due while in sequenza aggiungendo una variabile alla struct
-		if(strcmp(testa->username,p->rival)==0)
+	while(tes!=NULL){                                 ///posso evitare i due while in sequenza aggiungendo una variabile alla struct
+		if(strcmp(tes->username,p->rival)==0)
 			break;
-		testa=testa->next;
+		tes=tes->next;
 	}
 	
-	testa->stato=LIBERO;
+	tes->stato=LIBERO;
 	p->stato=LIBERO;
-	printf("il client %s si è arreso nella partita con %s\n",p->username,testa->username);
+	printf("il client %s si è arreso nella partita con %s\n",p->username,tes->username);
 	strcpy(p->rival,"");
-	strcpy(testa->rival,"");
-	printf("invio a %s la disconnect\n",testa->username );
-	inviaInt(testa->socket,DISCONNECT);
+	strcpy(tes->rival,"");
+	printf("invio a %s la disconnect\n",tes->username );
+	inviaInt(tes->socket,DISCONNECT);
 }
 
 void decripta(int cod, int i,struct listaClient ** testa,fd_set*master){
@@ -314,7 +343,7 @@ void decripta(int cod, int i,struct listaClient ** testa,fd_set*master){
 			break;
 		case COD_QUIT:
 			printf("ricevuta una quit\n");
-			quit(i,testa,master);
+			quit(i);
 			break;
 		case COD_CON_REQ:
 			printf("ricevuta una richiesta di connect\n");
@@ -347,7 +376,7 @@ int main(int argc, char*argv[]){
 		exit(1);
 	}
 	int udp;
-	struct listaClient * testa=NULL;
+	testa=NULL;
 	struct listaClient * nuovoClient=NULL;
 	int porta=atoi((const char*)argv[1]);
 	if(porta<1025||porta>0xFFFF)
@@ -359,7 +388,6 @@ int main(int argc, char*argv[]){
 		exit(1);
 	}
 	//1 parte multiplexing,sd è il listener
-	fd_set master;
 	fd_set read;
 	int fdmax;
 	FD_ZERO(&master);
