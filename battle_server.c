@@ -60,11 +60,11 @@ void inviaInt(int sd, int msgl){
 		//exit(1);
 	}
 }
-int rimuoviDaLista(int i,struct listaClient ** tes){
+int rimuoviDaLista(int i){
 	int app;
 	char *c=NULL;
 	char user[USERNAME_LEN];
-	struct listaClient * p=*tes;
+	struct listaClient * p=testa;
 	struct listaClient * prev=NULL;
 	while(p!=NULL){
 		if(i==p->socket){
@@ -77,7 +77,7 @@ int rimuoviDaLista(int i,struct listaClient ** tes){
 				}
 			}
 			if (prev==0)
-				*tes=p->next;
+				testa=p->next;
 			else{
 				prev->next=p->next;
 			}
@@ -87,7 +87,7 @@ int rimuoviDaLista(int i,struct listaClient ** tes){
 		p=p->next;
 	}
 	if(c!=NULL){
-		p=*tes;
+		p=testa;
 		while(p!=NULL){
 			if(p->porta!=0 && strcmp(user,p->username)==0){
 				p->stato=LIBERO;
@@ -95,13 +95,11 @@ int rimuoviDaLista(int i,struct listaClient ** tes){
 			}
 			p=p->next;
 		}
-		//inviaInt(p->socket,COD_CON_REFUSED);
 	}
-
 	return app;
 }
 void quit(int i){
-	int a=rimuoviDaLista(i,&testa);
+	int a=rimuoviDaLista(i);
 	if(a!=0)
 		n_client--;
 	close(i);
@@ -110,14 +108,12 @@ void quit(int i){
 void controllaReceive(int ret,int i){
 	if(ret==-1){
 		perror("Errore nella recv");
-	//	exit(1);
+		//	exit(1);
 	}
 	if(ret==0){
 		printf("Client disconnesso \n");
-		///modifica
 		quit(i);
-
-//		exit(0);
+		//		exit(0);
 	}	
 }
 
@@ -133,19 +129,19 @@ int quantiByte(int i){
 	ret=recv(i,(void*)&dimMsg,sizeof(int),0);
 	controllaReceive(ret,i);
 	int dimMsg2=(int)ntohl(dimMsg);
-	printf("byte ricevuti: %d \n",ret);
-	printf("il client vuole mandare %d byte\n",dimMsg2 );
+	//printf("byte ricevuti: %d \n",ret);
+	//printf("il client vuole mandare %d byte\n",dimMsg2 );
 	return dimMsg2;
 }
 void riceviByte(int i, void*buf,int dimMsg){
 	int ret;
 	ret=recv(i,(void*)buf,dimMsg,0);
 	controllaReceive(ret,i);
-	printf("byte ricevuti: %d \n \n",ret);
+	printf("byte ricevuti: %d \n",ret);
 }
-void inserimentoLista(struct listaClient ** tes, struct listaClient *p){
-	p->next=*tes;
-	*tes=p;
+void inserimentoLista(struct listaClient *p){
+	p->next=testa;
+	testa=p;
 }
 void inserimentoDatiLista(int i,char*buf,int udp, struct listaClient *p){
 	//effettua un controllo fai inserimentoLista in coda;
@@ -158,14 +154,15 @@ void inserimentoDatiLista(int i,char*buf,int udp, struct listaClient *p){
 	strcpy(p->username,buf);
 	p->porta=udp;
 }
-void stampaLista(struct listaClient * p){
+void stampaLista(){
+	struct listaClient * p=testa;
 	while(p!=NULL){
 		if(p->porta!=0){
 			printf("%s(",p->username );
 			stampaStato(p->stato);
 			printf("porta: %d\n",p->porta );
 			printf("ip: %s\n\n",p->ip );
-		}
+		}	
 		p=p->next;
 	}
 }
@@ -197,7 +194,8 @@ void inviaByte(int sd, int dim, void * msg){
 		exit(1);
 	}
 }
-void who(int i,struct listaClient * p){//faccio una stima di 20 char per client
+void who(int i){//faccio una stima di 20 char per client
+	struct listaClient * p=testa;
 	int dim=n_client*20;
 	char*app;
 	char *buf=(char*)malloc(dim*sizeof(char));
@@ -234,9 +232,8 @@ void who(int i,struct listaClient * p){//faccio una stima di 20 char per client
 	inviaByte(i,dim,buf);
 	free(buf);
 }
-
-
-void connectUser(int i,struct listaClient*p){
+void connectUser(int i){
+	struct listaClient*p=testa;
 	int dim=quantiByte(i);
 	char user[dim];
 	riceviByte(i,user,dim);
@@ -267,15 +264,16 @@ void connectUser(int i,struct listaClient*p){
 	dim=strlen(sender->username)+1;
 	inviaByte(target->socket,dim,sender->username); //username
 }
-void gameAccepted(int i,struct listaClient * tes){
-	struct listaClient * p=tes;
-	while(tes!=NULL){
-		if(tes->socket==i)
+void gameAccepted(int i){
+	struct listaClient * head=testa;
+	struct listaClient * p=testa;
+	while(head!=NULL){
+		if(head->socket==i)
 			break;
-		tes=tes->next;
+		head=head->next;
 	}
 	while(p!=NULL){                                 ///posso evitare i due while in sequenza aggiungendo una variabile alla struct
-		if(strcmp(p->username,tes->rival)==0)
+		if(strcmp(p->username,head->rival)==0)
 			break;
 		p=p->next;
 	}
@@ -283,35 +281,36 @@ void gameAccepted(int i,struct listaClient * tes){
 	inviaInt(i,p->porta); //udp
 	int dim=strlen(p->ip)+1;
 	inviaByte(i,dim,p->ip); //ip
-
-	printf("il client %s ha accettato la partita con %s\n",testa->username,testa->rival);
+	printf("il client %s ha accettato la partita con %s\n",head->username,head->rival);
 	inviaInt(p->socket,COD_CON_ACC);
-	inviaInt(p->socket,tes->porta);
-	dim=strlen(tes->ip)+1;
+	inviaInt(p->socket,head->porta);
+	dim=strlen(head->ip)+1;
 	printf("invio a %s l'ip :%s\n",p->username,p->ip);
-	inviaByte(p->socket,dim,tes->ip);
+	inviaByte(p->socket,dim,head->ip);
 }
-void gameRefused(int i,struct listaClient * tes){
-	struct listaClient * p=tes;
-	while(testa!=NULL){
-		if(testa->socket==i)
+void gameRefused(int i){
+	struct listaClient * head=testa;
+	struct listaClient * p=testa;
+	while(head!=NULL){
+		if(head->socket==i)
 			break;
-		tes=tes->next;
+		head=head->next;
 	}
 	while(p!=NULL){                                 ///posso evitare i due while in sequenza aggiungendo una variabile alla struct
-		if(strcmp(p->username,tes->rival)==0)
+		if(strcmp(p->username,head->rival)==0)
 			break;
 		p=p->next;
 	}
-	tes->stato=LIBERO;
+	head->stato=LIBERO;
 	p->stato=LIBERO;
-	printf("il client %s ha rifiutato la partita con %s\n",testa->username,testa->rival);
+	printf("il client %s ha rifiutato la partita con %s\n",head->username,head->rival);
 	strcpy(p->rival,"");
-	strcpy(tes->rival,"");
+	strcpy(head->rival,"");
 	inviaInt(p->socket,COD_CON_REFUSED);
 }
-void disconnect(int i,struct listaClient * tes){
-	struct listaClient *p=tes;
+void disconnect(int i){
+	struct listaClient *p=testa;
+	struct listaClient * head=p;
 	while(p!=NULL){
 		if(p->socket==i)
 			break;
@@ -319,19 +318,19 @@ void disconnect(int i,struct listaClient * tes){
 	}
 	if(p->stato==LIBERO)
 		return;
-	while(tes!=NULL){                                 ///posso evitare i due while in sequenza aggiungendo una variabile alla struct
-		if(strcmp(tes->username,p->rival)==0)
+	while(head!=NULL){                                 ///posso evitare i due while in sequenza aggiungendo una variabile alla struct
+		if(strcmp(head->username,p->rival)==0)
 			break;
-		tes=tes->next;
+		head=head->next;
 	}
 	
-	tes->stato=LIBERO;
+	head->stato=LIBERO;
 	p->stato=LIBERO;
-	printf("il client %s si è arreso nella partita con %s\n",p->username,tes->username);
+	printf("il client %s si è arreso nella partita con %s\n",p->username,head->username);
 	strcpy(p->rival,"");
-	strcpy(tes->rival,"");
-	printf("invio a %s la disconnect\n",tes->username );
-	inviaInt(tes->socket,DISCONNECT);
+	strcpy(head->rival,"");
+	printf("invio a %s la disconnect\n",head->username );
+	inviaInt(head->socket,DISCONNECT);
 }
 
 void decripta(int cod, int i,struct listaClient ** testa,fd_set*master){
@@ -339,7 +338,7 @@ void decripta(int cod, int i,struct listaClient ** testa,fd_set*master){
 	switch(cod){
 		case COD_WHO:
 			printf("ricevuta una who\n");
-			who(i,*testa);
+			who(i);
 			break;
 		case COD_QUIT:
 			printf("ricevuta una quit\n");
@@ -347,16 +346,16 @@ void decripta(int cod, int i,struct listaClient ** testa,fd_set*master){
 			break;
 		case COD_CON_REQ:
 			printf("ricevuta una richiesta di connect\n");
-			connectUser(i,*testa);
+			connectUser(i);
 			break;
 		case COD_CON_ACC:
-			gameAccepted(i,*testa);
+			gameAccepted(i);
 			break;
 		case COD_CON_REF:
-			gameRefused(i,*testa);
+			gameRefused(i);
 			break;
 		case DISCONNECT:
-			disconnect(i,*testa);
+			disconnect(i);
 			break;
 		printf("codifica non riconosciuta\n");
 		break;
@@ -434,7 +433,7 @@ int main(int argc, char*argv[]){
 					strcpy(nuovoClient->ip,inet_ntoa(client.sin_addr));
 					nuovoClient->socket=new_sd;
 					strcpy(nuovoClient->rival," ");
-					inserimentoLista(&testa,nuovoClient);
+					inserimentoLista(nuovoClient);
 					if(new_sd==-1){
 						perror("Errore nella accept");
 						exit(1);
@@ -457,7 +456,7 @@ int main(int argc, char*argv[]){
 								printf("username non presente\n");
 								inviaInt(i,OK);
 								inserimentoDatiLista(i,c,udp,testa);
-								stampaLista(testa);
+								stampaLista();
 								break;
 							}
 							inviaInt(i,ERRORE);            

@@ -683,6 +683,7 @@ int main(int argc,char* argv[]) {
     ret=bind(sudp,(struct sockaddr*)&my_addr,sizeof(my_addr));
     if(ret==-1){
     	perror("bind ");
+    	quit(sd);
     	exit(1);
     }
     FD_SET(sudp,&master);
