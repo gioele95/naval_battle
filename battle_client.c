@@ -194,6 +194,7 @@ int posizionaNavi(enum StatoCasella *b,int t){
     FD_ZERO(&read);
     FD_SET(0,&master);
     FD_SET(sd,&master);
+    char *foo; 
     struct timeval timeout;
     timeout.tv_sec=TIMEOUT+t;
     timeout.tv_usec=0;
@@ -212,17 +213,30 @@ int posizionaNavi(enum StatoCasella *b,int t){
         for(j=0;j<=fdmax;j++){
             if(FD_ISSET(j,&read)){
             	if(j==0){
-            		printf("inserisco nave\n");
-					ret=insert(buf,SQUARE_DIM);
-					printf("nave: %s\n",buf );
-					if(ret==-1){
-						printf("casella non valida\n");
-						continue;
-					}
-					if(controllaCasella(buf,VUOTO,b,&x,&y))
-						continue;
-					b[x-1+(y-1)*6]=OCCUPATA;
-					i++;
+            		while (scanf("%ms", &foo)){
+            			printf("inserisco nave\n");
+				   		memset(buf,0,SQUARE_DIM);				   
+					    if(strlen(foo)>SQUARE_DIM){
+					    	free(foo);
+					    	printf("casella non valida\n");
+							continue;
+					    }
+				    	strncpy(buf,foo,SQUARE_DIM);
+				    	free(foo);
+            			printf("nave: %s\n",buf );
+            			if(controllaCasella(buf,VUOTO,b,&x,&y))
+							continue;
+						b[x-1+(y-1)*6]=OCCUPATA;
+						i++;
+						if(i>=N_NAVI)
+							break;
+            		}
+						/*ret=insert(buf,SQUARE_DIM);
+						
+						if(ret==-1){
+							printf("casella non valida\n");
+							continue;
+						}*/
 				}
 				else if (j==sd){
 					ret=quantiByte(sd);
@@ -716,13 +730,13 @@ int main(int argc,char* argv[]) {
 	        retval=select(fdmax+1,&read,NULL,NULL,&timeout);
 	        timeout.tv_sec=TIMEOUT;
 	        if(retval==0){
+	        	printf("timeout scaduto\n");
 	        	if(inGame){
-		        	printf("timeout scaduto\n");
 		        	if(myturn){
-		        		//myturn=false;
 		        		disconnect(sd);
 						printf("TI SEI ARRESO\n");
 		        	}
+		        	break;
 		        }
 	        }
 	        else
