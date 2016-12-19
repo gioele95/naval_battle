@@ -33,7 +33,8 @@
 #define IP_LEN 16
 #define N_NAVI 7
 #define SQUARE_DIM 3
-#define TIMEOUT 60
+#define TIMEOUT 20
+#define TIMEOUTNAVI 30
 #define DIM_TABELLA 36
 //DEVI RICAVARE L?IP PER POI MANDARE UDP E POI FARE LA INETPTON
 
@@ -195,13 +196,15 @@ int posizionaNavi(enum StatoCasella *b,int t){
     FD_SET(0,&master);
     FD_SET(sd,&master);
     char *foo; 
+ //   char nl[1];
     struct timeval timeout;
-    timeout.tv_sec=TIMEOUT+t;
+    timeout.tv_sec=TIMEOUTNAVI+t;
     timeout.tv_usec=0;
 	while (i<N_NAVI){
 		read=master;
         retval=select(fdmax+1,&read,NULL,NULL,&timeout);
-        timeout.tv_sec=TIMEOUT;
+        timeout.tv_sec=TIMEOUTNAVI;
+        printf("retval: %d inGame:%d\n", retval,inGame);
         if(retval==0){
         	if(inGame){
 	        	printf("timeout scaduto\n");
@@ -213,7 +216,8 @@ int posizionaNavi(enum StatoCasella *b,int t){
         for(j=0;j<=fdmax;j++){
             if(FD_ISSET(j,&read)){
             	if(j==0){
-            		while (scanf("%ms", &foo)){
+            		//while (scanf("%ms", &foo){
+            			scanf("%ms", &foo);
             			printf("inserisco nave\n");
 				   		memset(buf,0,SQUARE_DIM);				   
 					    if(strlen(foo)>SQUARE_DIM){
@@ -228,15 +232,9 @@ int posizionaNavi(enum StatoCasella *b,int t){
 							continue;
 						b[x-1+(y-1)*6]=OCCUPATA;
 						i++;
-						if(i>=N_NAVI)
-							break;
-            		}
-						/*ret=insert(buf,SQUARE_DIM);
-						
-						if(ret==-1){
-							printf("casella non valida\n");
-							continue;
-						}*/
+					//	if(i>=N_NAVI)
+					//		break;
+            		//}
 				}
 				else if (j==sd){
 					ret=quantiByte(sd);
@@ -409,15 +407,15 @@ void inserisciComando(int sd,char *buf,char*username,struct rival*opp,enum Stato
 			who(sd);
 			return;
 		}
-		if((strcmp("y",buf)==0)&&(opp->udp!=0)){
+		if((strcmp("y",buf)==0)&&(inGame)&&(opp->udp==-1)){
 			printf("Hai accettato la partita con %s\n",opp->user);
 			printf("sulla porta: %d\n",opp->udp );
 			inviaInt(sd,COD_CON_ACC);
 			return;
 		}
-		if((strcmp("n",buf)==0)&&(opp->udp!=0)){
+		if((strcmp("n",buf)==0)&&(inGame)&&(opp->udp==-1)) {
 			printf("Hai rifiutato la partita con %s\n",opp->user);
-			opp->udp=0;
+			opp->udp=-1;
 			waitingConnect=false;
 			inGame=false;
 			inviaInt(sd,COD_CON_REF);
@@ -525,17 +523,17 @@ void decripta(int cod, int sd,struct rival *opp,enum StatoCasella *b,struct sock
 			recvWho(sd);
 			break;
 		case COD_CON_REF:
-			opp->udp=0;
+			opp->udp=-1;
 			printf("connect rifiutata utente inesistente\n");
          	waitingConnect=false;
 			break;
 		case COD_CON_REFUSED:
-			opp->udp=0;
+			opp->udp=-1;
 			printf("partita rifiutata da: %s\n",opp->user);
          	waitingConnect=false;
 			break;
 		case COD_CON_REF_OCC:
-			opp->udp=0;
+			opp->udp=-1;
 			printf("connect rifiutata utente occupato\n");
          	waitingConnect=false;
 			break;
@@ -563,7 +561,7 @@ void decripta(int cod, int sd,struct rival *opp,enum StatoCasella *b,struct sock
 				inGame=false;
 				resettaGriglia(tabellaAvversaria);
 				printf("HAI VINTO!!! %s si è arreso\n",opp->user);
-				opp->udp=0;
+				opp->udp=-1;
 				strcpy(opp->ip,"");
 			}
 			else{
@@ -606,7 +604,7 @@ void riceviUdp(struct sockaddr_in*cl){
 		printf("HAI PERSO :( :( :( \n");
 		inGame=false;
 		resettaGriglia(tabellaAvversaria);
-		opponent.udp=0;
+		opponent.udp=-1;
 		strcpy(opponent.ip,"");
 		disconnect(sd);
 		return;
@@ -619,8 +617,9 @@ void decriptaUdp (int cod,struct sockaddr_in*cl,int *x,int *y){
 	printf("sto decriptando\n");
 	switch(cod){
 		case COD_SHOT:
+			if(inGame){
 			printf("ricevuta una shot\n");
-			riceviUdp(cl);
+			riceviUdp(cl);}
 			break;
 		case true:
 			printf("Hai colpito l'avversario\n");
@@ -635,7 +634,7 @@ void decriptaUdp (int cod,struct sockaddr_in*cl,int *x,int *y){
 			naviRimaste=N_NAVI;
 			inGame=false;
 			resettaGriglia(tabellaAvversaria);
-			opponent.udp=0;
+			opponent.udp=-1;
 			strcpy(opponent.ip,"");
 			break;
 		printf("codifica non riconosciuta\n");
@@ -645,7 +644,7 @@ void decriptaUdp (int cod,struct sockaddr_in*cl,int *x,int *y){
 int main(int argc,char* argv[]) {
 	naviRimaste=N_NAVI;
 	infoInviate=false;
-	opponent.udp=0;
+	opponent.udp=-1;
 	strcpy(opponent.ip,"");
     strcpy(username,"");
     waitingConnect=false;
@@ -689,7 +688,7 @@ int main(int argc,char* argv[]) {
 
     sudp= socket(AF_INET,SOCK_DGRAM, 0);	
     struct sockaddr_in my_addr,client;
-    memset(&server,0,sizeof(my_addr));
+    memset(&my_addr,0,sizeof(my_addr));
     my_addr.sin_family=AF_INET;
     my_addr.sin_port=htons(udp);
     my_addr.sin_addr.s_addr=INADDR_ANY;
@@ -714,34 +713,41 @@ int main(int argc,char* argv[]) {
     int retval;
     for(;;){
     	if(inGame==false){
-	    	printf("> ");
+	    	printf("\r> ");
 	        fflush(stdout);
 	    }else{   
 	       	if(myturn){
 	       		printf("è il tuo turno\n");
 	       		printf("Navi rimaste: %d\n", naviRimaste);
 	       	}
-	        printf("# ");
+	        printf("\r# ");
 	        fflush(stdout);	
 	    }
 	    int x,y;
         read=master;
-        while(1){
+       // while(1){
 	        retval=select(fdmax+1,&read,NULL,NULL,&timeout);
 	        timeout.tv_sec=TIMEOUT;
 	        if(retval==0){
-	        	printf("timeout scaduto\n");
+	        //	printf("timeout scaduto %d\n",inGame);
+	        //	printf("opp.udp %d\n", opponent.udp);
 	        	if(inGame){
 		        	if(myturn){
 		        		disconnect(sd);
 						printf("TI SEI ARRESO\n");
 		        	}
-		        	break;
+		        	if(opponent.udp==-1){
+		        		waitingConnect=false;
+						inGame=false;
+						inviaInt(sd,COD_CON_REF);
+						printf("non hai dato una risposta nel tempo richiesto per la partita\n");
+		        	}
+		    //    	break;
 		        }
 	        }
-	        else
+	      /*  else
 	        	break;
-	    }
+	    }*/
         for(i=0;i<=fdmax;i++){
             if(FD_ISSET(i,&read)){
                 if(i==sd){
