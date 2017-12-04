@@ -1,1 +1,1 @@
-# My project's README
+# Class project for a distributed naval battle game
