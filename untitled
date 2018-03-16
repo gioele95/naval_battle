@@ -1,7 +1,0 @@
-/*void insert(char*buf,int dim){
-    char *foo; 
-    scanf("%ms", &foo);
-    strncpy(buf,foo,dim);
-    free(foo);
-}*/
-A,2 A,3 A,4 A,5 A,6 B,2 B,3
