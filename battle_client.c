@@ -270,10 +270,11 @@ void initializeSockaddr(char * ip, int p,struct sockaddr_in*cl){
 	inet_pton(AF_INET,ip,&cl->sin_addr);
 }
 void help(){
-	printf("\nSono disponibili i seguenti comandi:\n!help --> mostra l'elenco dei comandi disponibili \n!who --> mostra l'elenco dei client connessi al server\n!connect username --> avvia una partita con l'utente username\n!quit --> disconnette il client dal server\n");	
+	printf("\nThe following commands are available:\n!help --> displays the list of possible commands \n!who --> displays the list of clients connected to the server\n!connect username --> starts up a game with user 'username'\n!quit --> disconnects the client from the server\n");	
 }
 void helpGame(){
-	printf("\nSono disponibili i seguenti comandi:\n!help --> mostra l'elenco dei comandi disponibili \n!disconnect --> disconnette il client dall'attuale partita\n!shot square --> fai un tentativo con la casella square\n!show --> visualizza la griglia di gioco\n");	
+	help();
+	printf("\n!shot square --> make an attempt to cell 'square'\n!show --> show the game grid\n");	
 }
 
 int quantiByteUdp(int i,struct sockaddr_in*cl){
@@ -648,7 +649,7 @@ int main(int argc,char* argv[]) {
    	inGame=false;
     if (signal(SIGINT, mysigint) == SIG_ERR)
         printf("Cannot handle SIGINT!\n");
-    if(argc<2){
+    if(argc!=3){
         printf("Errore passaggio argomenti al server\n");
         exit(1);
     }
