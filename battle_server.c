@@ -370,7 +370,7 @@ int usernamePresente(char*username,struct listaClient*p){
 	return false;
 }
 int main(int argc, char*argv[]){
-	if(argc!=1){
+	if(argc!=2){
 		printf("Errore passaggio argomenti al server\n");
 		exit(1);
 	}
