@@ -2,12 +2,12 @@
 
 CC=gcc
 CFLAGS=-Wall
-all:p c
+all:server client
 
-p: battle_server.o 
-	cc -o p battle_server.o
-c: battle_client.o 
-	cc -o c battle_client.o
+server: battle_server.o 
+	cc -o server battle_server.o
+client: battle_client.o 
+	cc -o client battle_client.o
 clean:
 	rm -f p battle_server.o
 	rm -f c battle_client.o
