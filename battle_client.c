@@ -9,47 +9,22 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <signal.h>
+#include "../costants.h"
 
-#define true 1
-#define false 0
-#define COD_WHO 1
-#define COD_INFO 2
-#define OK 3
-#define COD_QUIT 5
-#define COD_CON_REQ 8
-#define COD_CON_REF 9
-#define COD_CON_ACC 10
-#define COD_CON_REF_OCC 11
-#define COD_CON_REFUSED 12
-#define DISCONNECT 13
-#define SHOT_DIM 3
-#define YOU_WON 14
-#define COD_SHOT 15
-#define COD_HIT 16
-#define CONN_INFO 17
-
-#define USERNAME_LEN 30
-#define COD_FAST_QUIT 7
-#define IP_LEN 16
-#define N_NAVI 2
-#define SQUARE_DIM 3
-#define TIMEOUT 20
-#define TIMEOUTNAVI 30
-#define DIM_TABELLA 36
 //DEVI RICAVARE L?IP PER POI MANDARE UDP E POI FARE LA INETPTON
 
-enum StatoCasella{OCCUPATA,COLPITA,MANCATA,VUOTO};
-// nave posizionata o //nave non colpita ~ // nave colpita     x	// Vuoto ?
+enum CellStatus{OCCUPIED,HIT,MISSED,EMPTY};
+// nave posizionata o //nave non HIT ~ // nave HIT     x	// EMPTY ?
 int sd,sudp;
 char username[USERNAME_LEN];
 int waitingConnect;
 int inGame;
 int myturn;
-int infoInviate;
-int naviRimaste;
+int infoSent;
+int shipsLeft;
 //int naviDaPosizionare;
-enum StatoCasella tabella[DIM_TABELLA];
-enum StatoCasella tabellaAvversaria[DIM_TABELLA];
+enum CellStatus grid[TABLE_SIZE];
+enum CellStatus opponentsGrid[TABLE_SIZE];
 struct rival opponent;//=(struct rival*)malloc(sizeof(struct rival));
 
 struct rival{
@@ -71,13 +46,13 @@ int insert(char*buf,int dim){
     return 1;
 }
 
-void controllaReceive(int ret){
+void handleReceive(int ret){    //COMMPMNNNNNNNNNNNNNNNNNNNNN
 	if(ret==-1){
-		perror("Errore nella recv");
+		perror("receive error");
 		exit(1);
 	}	
 }
-void stampa(enum StatoCasella *b){
+void printMap(enum CellStatus *b){
 	int i=0;
 	int riga=0;
 	printf("  A B C D E F");
@@ -85,16 +60,16 @@ void stampa(enum StatoCasella *b){
 		if((i%6)==0)
 			printf("\n%d ",++riga);
 		switch(b[i]){
-			case OCCUPATA:
+			case OCCUPIED:
 				printf("o ");
 				break;
-			case MANCATA: 
+			case MISSED: 
 				printf("~ ");
 				break;			
-			case COLPITA:
+			case HIT:
 				printf("x ");
 				break;
-			case VUOTO:
+			case EMPTY:
 				printf("? ");
 				break;
 		}
@@ -102,7 +77,7 @@ void stampa(enum StatoCasella *b){
 	printf("\n");
 	printf("\n");
 }
-int ottieniX(char *buf){
+int getXCoordinate(char *buf){
 	if(strcmp("A",buf)==0)
 		return 1;
 	if(strcmp("B",buf)==0)
@@ -117,58 +92,58 @@ int ottieniX(char *buf){
 		return 6;
 	return -1;
 }
-void resettaGriglia(enum StatoCasella*b){
+void resetGrid(enum CellStatus*b){
 	int i;
 	for ( i = 0; i < 36; ++i)
 	{
-		b[i]=VUOTO;
+		b[i]=EMPTY;
 	}
 }
-int controllaCasella(char *buf,enum StatoCasella s,enum StatoCasella *b,int*xx,int*yy){
+int checkCell(char *buf,enum CellStatus s,enum CellStatus *b,int*xx,int*yy){
 	int y=atoi((const char*)&buf[2]);
 	char *p=strtok(buf,",");
 	if(p==NULL){
-		printf("casella non valida  \n");
+		printf("invalid cell\n");
 		return true;
 	}
-	int x=ottieniX(p);
+	int x=getXCoordinate(p);
 	if(x==-1 || y>6 || y<1){
-		printf("casella non valida \n");
+		printf("invalid cell\n");
 		return true;
 	}
-	if(	b[x-1+(y-1)*6]!=VUOTO&& s==VUOTO){
-		printf("nave già posizionata in questa casella \n");
+	if(	b[x-1+(y-1)*6]!=EMPTY&& s==EMPTY){
+		printf("ship already positioned in this cell \n");
 		return true;
 	}
-	if(	b[x-1+(y-1)*6]!=VUOTO&& s==VUOTO){
-		printf("nave già posizionata in questa casella \n");
+	if(	b[x-1+(y-1)*6]!=EMPTY&& s==EMPTY){
+		printf("ship already positioned in this cell \n");
 		return true;
 	}
-	if(	b[x-1+(y-1)*6]!=VUOTO&& s==MANCATA){
-		printf("hai già colpito questa casella \n");
+	if(	b[x-1+(y-1)*6]!=EMPTY&& s==MISSED){
+		printf("You've already shot in this cell \n");
 		return true;
 	}
 	*xx=x;
 	*yy=y;
 	return false;
 }
-void inviaInt(int sd, int msgl){
+void sendInteger(int sd, int msgl){//////////////////////DOPPIAAAAAAAAAAAAAAAAAAAAAAAAA
 	int ret;
 	int msg=htonl(msgl);
 	ret=send(sd,(void*)&msg,sizeof(int),0);
 	if(ret==-1){
-		perror("Errore nell'invio dell'intero al client");
+		perror("Error in sending the integer to the client");
 		exit(1);
 	}
 }
-int quantiByte(int i){
+int howManyBytes(int i){ ///////////////////////////////DOPPIA
 	int ret;
 	uint32_t dimMsg;
 	ret=recv(i,(void*)&dimMsg,sizeof(int),0);
-	controllaReceive(ret);
+	handleReceive(ret);
 	int dimMsg2=(int)ntohl(dimMsg);
 	if(ret==0){
-		printf("Il server si è disconnesso\n");
+		printf("The server has been disconnected\n");
 		close(sd);
 		exit(1);
 	}
@@ -177,17 +152,17 @@ int quantiByte(int i){
 void disconnect(int sd){
 	myturn=false;
 	inGame=false;
-	inviaInt(sd,DISCONNECT);
-	printf("Ti sei disconnesso correttamente\n");
-	resettaGriglia(tabellaAvversaria);
+	sendInteger(sd,DISCONNECT);
+	printf("You have successfully disconnected\n");
+	resetGrid(opponentsGrid);
 }
-int posizionaNavi(enum StatoCasella *b,int t){
-	naviRimaste=N_NAVI;
-	resettaGriglia(b);
+int deployShips(enum CellStatus *b,int t){
+	shipsLeft=N_SHIPS;
+	resetGrid(b);
 	int j,i=0;
 	int x,y,retval;
 	char buf[4];
-	printf("\rInserire le coordinate in cui posizionare le %d navi indicando le caselle [A-F],[1-6] separate da virgola\n",N_NAVI);
+	printf("\r Insert the coordinates of the %d ships by specifying the cells [A-F],[1-6] divided by comma e.g. D,5\n",N_SHIPS);
 	int ret;
 	fd_set master;
     fd_set read;
@@ -199,18 +174,18 @@ int posizionaNavi(enum StatoCasella *b,int t){
     char *foo; 
  //   char nl[1];
     struct timeval timeout;
-    timeout.tv_sec=TIMEOUTNAVI+t;
+    timeout.tv_sec=TIMEOUT_SHIPS+t;
     timeout.tv_usec=0;
-	while (i<N_NAVI){
+	while (i<N_SHIPS){
 		read=master;
         retval=select(fdmax+1,&read,NULL,NULL,&timeout);
-        timeout.tv_sec=TIMEOUTNAVI;
+        timeout.tv_sec=TIMEOUT_SHIPS;
     //    printf("retval: %d inGame:%d\n", retval,inGame);
         if(retval==0){
         	if(inGame){
 	        //	printf("timeout scaduto\n");
 	        	disconnect(sd);
-				printf("TI SEI ARRESO\n");	
+				printf("YOU GAVE UP\n");	
 	        }
 	        return false;
         } 
@@ -223,42 +198,42 @@ int posizionaNavi(enum StatoCasella *b,int t){
 				   		memset(buf,0,SQUARE_DIM);				   
 					    if(strlen(foo)>SQUARE_DIM){
 					    	free(foo);
-					    	printf("casella non valida\n");
+					    	printf("invalid cell\n");
 							continue;
 					    }
 				    	strncpy(buf,foo,SQUARE_DIM);
 				    	free(foo);
             		//	printf("nave: %s\n",buf );
-            			if(controllaCasella(buf,VUOTO,b,&x,&y))
+            			if(checkCell(buf,EMPTY,b,&x,&y))
 							continue;
-						b[x-1+(y-1)*6]=OCCUPATA;
+						b[x-1+(y-1)*6]=OCCUPIED;
 						i++;
-					//	if(i>=N_NAVI)
+					//	if(i>=N_SHIPS)
 					//		break;
             		//}
 				}
 				else if (j==sd){
-					ret=quantiByte(sd);
+					ret=howManyBytes(sd);
 					if(ret==DISCONNECT){
 						inGame=false;
 						myturn=false;
-						printf("hai vinto il client avversario si è disconnesso\n");
+						printf("YOU WON, the other client has disconnected\n");
 						return false;
 					}
 				}
 			}
 		}
 	}
-	stampa(b);
+	printMap(b);
 	return true;
 }
 
-void inviaIntUdp(int sd, int msgl,struct sockaddr_in*cl){
+void sendIntegerUdp(int sd, int msgl,struct sockaddr_in*cl){
 	int ret;
 	int msg=htonl(msgl);
 	ret=sendto(sd,(void*)&msg,sizeof(int),0,(struct sockaddr*)cl,sizeof(*cl));
 	if(ret==-1){
-		perror("Errore nell'invio dell'intero al client");
+		perror("Error in sending the integer to the client");
 		exit(1);
 	}
 }
@@ -277,27 +252,27 @@ void helpGame(){
 	printf("\n!shot square --> make an attempt to cell 'square'\n!show --> show the game grid\n");	
 }
 
-int quantiByteUdp(int i,struct sockaddr_in*cl){
+int howManyBytesUdp(int i,struct sockaddr_in*cl){
 	int ret;
 	uint32_t dimMsg;
 	socklen_t addrlen=sizeof(*cl);
 	ret=recvfrom(i,(void*)&dimMsg,sizeof(int),0,(struct sockaddr*)cl,&addrlen);
-	controllaReceive(ret);
+	handleReceive(ret);
 	int dimMsg2=(int)ntohl(dimMsg);
 	return dimMsg2;
 }
-void riceviByte(int i, void*buf,int dimMsg){
+void receiveBytes(int i, void*buf,int dimMsg){
 	int ret;
 	ret=recv(i,(void*)buf,dimMsg,0);
-	controllaReceive(ret);
+	handleReceive(ret);
 	//printf("\rbyte ricevuti: %d \n \n",ret);
 }
-void inviaByte(int sd, int dim, void * msg){
+void sendBytes(int sd, int dim, void * msg){
 	int ret;
-	inviaInt(sd,dim);
+	sendInteger(sd,dim);
 	ret=send(sd,msg,dim,0);
 	if(ret==-1){
-		perror("Errore nell'invio delle informazioni al server");
+		perror("Error in sending the info to the server");
 		exit(1);
 	}
 }
@@ -307,7 +282,7 @@ int insertUsername(char*user){
     if(dimMsg>=USERNAME_LEN){
         dimMsg=USERNAME_LEN;
         username[USERNAME_LEN-1]='\0';
-        printf("username troppo lungo verrà inviato %s\n",user);
+        printf("username is too long, you will be asssigned: %s\n",user);
     }
     else
         dimMsg++;
@@ -315,12 +290,12 @@ int insertUsername(char*user){
 }
 void who(int sd){
 	//printf("provo invio al server il codice %d \n",COD_WHO);
-	inviaInt(sd,COD_WHO);
+	sendInteger(sd,COD_WHO);
 }
 void quit(int sd){
 	//printf("provo invio al server il codice %d \n",COD_QUIT);
-	inviaInt(sd,COD_QUIT);
-	printf("Mi disconnetto dal server:\n");
+	sendInteger(sd,COD_QUIT);
+	printf("Disconnecting from server\n");
 	close(sd);
 	exit(0);
 }
@@ -331,39 +306,39 @@ void connectUser(int sd,struct rival*opp){
 	dimMsg=strlen(user)+1;
 	//	printf("%d\n",dimMsg );
 	if(dimMsg>=USERNAME_LEN){
-		printf("comando non valido lo username è troppo lungo\n");
+		printf("invalid command the username is too long\n");
 		return;
 	}	
-	printf("ti vuoi connettere a %s\n", user);
+	printf("you want to connect to: %s\n", user);
 	if(waitingConnect==true){
-		printf("non puoi fare una connect sei già in attesa\n");
+		printf("If you're already waiting for a response you cannot ask for another connect\n");
 		return;
 	}
 	if(strcmp(user,username)==0){
-		printf("non puoi fare una connect a te stesso\n");
+		printf("you cannot connect with yourself\n");
 		return;
 	}
 	strcpy(opp->user,user);
 	waitingConnect=true;
-	inviaInt(sd,COD_CON_REQ);
+	sendInteger(sd,COD_CON_REQ);
 	//printf("sto per mandare al server %s\n", user);
-	inviaByte(sd,dimMsg,user);
+	sendBytes(sd,dimMsg,user);
 }
 
 void shot(struct sockaddr_in*cl,struct rival*opp,int *x,int *y){
 	char buf[5];
 	int ret=insert(buf,SQUARE_DIM);
 	if(ret==-1){
-		printf("casella non valida\n");
+		printf("invalid cell\n");
 		return;
 	}
 	//printf("invio la casella %s\n",buf);
-	if(controllaCasella(buf,MANCATA,tabellaAvversaria,x,y)){
-		printf("casella non valida o hai già colpito sulla suddetta\n");
+	if(checkCell(buf,MISSED,opponentsGrid,x,y)){
+		printf("invalid or already shot cell \n");
 		return;
 	}
-	inviaIntUdp(sudp,COD_SHOT,cl);
-	inviaIntUdp(sudp,SHOT_DIM,cl);
+	sendIntegerUdp(sudp,COD_SHOT,cl);
+	sendIntegerUdp(sudp,SHOT_DIM,cl);
 	ret=sendto(sudp,buf,SHOT_DIM,0,(struct sockaddr*)cl,sizeof(*cl));
 	if(ret==-1){
 		perror("sendto");
@@ -372,7 +347,7 @@ void shot(struct sockaddr_in*cl,struct rival*opp,int *x,int *y){
 	myturn=false; 
 
 }
-void inserisciComando(int sd,char *buf,char*username,struct rival*opp,enum StatoCasella *b,struct sockaddr_in*cl,int *x,int*y){
+void insertCommand(int sd,char *buf,char*username,struct rival*opp,enum CellStatus *b,struct sockaddr_in*cl,int *x,int*y){
 		scanf("%19s",buf); ///scanf/"%ms",&buf delego al SO
 		printf("%s\n",buf );
 		if(strcmp("!quit",buf)==0&&inGame==false){
@@ -387,9 +362,9 @@ void inserisciComando(int sd,char *buf,char*username,struct rival*opp,enum Stato
 			return;
 		}
 		if(strcmp("!disconnect",buf)==0&&inGame==true){
-			naviRimaste=N_NAVI;
+			shipsLeft=N_SHIPS;
 			disconnect(sd);
-			printf("TI SEI ARRESO\n");
+			printf("YOU GAVE UP :(");
 			return;
 		}
 		if(strcmp("!connect",buf)==0&&inGame==false){ 
@@ -403,23 +378,23 @@ void inserisciComando(int sd,char *buf,char*username,struct rival*opp,enum Stato
 			return;
 		}
 		if((strcmp("y",buf)==0)&&(inGame)&&(opp->udp==-1)){
-			printf("Hai accettato la partita con %s\n",opp->user);
-			inviaInt(sd,COD_CON_ACC);
+			printf("You have accepted the game with %s\n",opp->user);
+			sendInteger(sd,COD_CON_ACC);
 			return;
 		}
 		if((strcmp("n",buf)==0)&&(inGame)&&(opp->udp==-1)) {
-			printf("Hai rifiutato la partita con %s\n",opp->user);
+			printf("You have refused the game with %s\n",opp->user);
 			opp->udp=-1;
 			waitingConnect=false;
 			inGame=false;
-			inviaInt(sd,COD_CON_REF);
+			sendInteger(sd,COD_CON_REF);
 			return;
 		}
 		if((strcmp("!show",buf)==0)&&(inGame)){
-			printf("Stampo la tua griglia\n");
-			stampa(tabella);
-			printf("Stampo la griglia avversaria\n");
-			stampa(tabellaAvversaria);
+			printf("Printing your grid\n");
+			printMap(grid);
+			printf("Printing your opponents grid\n");
+			printMap(opponentsGrid);
 			return;
 		}
 		if((strcmp("!shot",buf)==0)&&(myturn)){
@@ -428,90 +403,89 @@ void inserisciComando(int sd,char *buf,char*username,struct rival*opp,enum Stato
 			return;
 		}
 		if((strcmp("!shot",buf)==0)&&(!myturn)){
- 			printf("Aspetta il tuo turno, non puoi sparare al di fuori del tuo turno\n");
+ 			printf("Wait for your turn\n");
 			return;
 		}
-		printf("Comando digitato non riconosciuto, riprovare\n");
+		printf("Command has not been recognised, try again\n");
 }
-void inserisciPorta(int * portaAscolto){
+void insertPort(int * portaAscolto){ /////////DOPPIA
 	char buf[10];
 	while(1){
-		printf("Inserisci la tua porta UDP di ascolto: ");
+		printf("Insert your UDP listening port ");
 		scanf("%s",buf);
 		*portaAscolto=atoi((const char*)buf);
 		if(*portaAscolto<1025||*portaAscolto>0xFFFF){
-			printf("Porta indicata non valida, RIPROVARE\n");
+			printf("Invalid port, try again\n");
 			continue;
 		}
 		break;
 	}
 }
 
-int inviaInfo(int sd,char *username){
+int sendInfo(int sd,char *username){
 	int portaAscolto;
 	while(1){
-		printf("Inserisci il tuo nome client: ");
+		printf("Insert your username: ");
 		int dimMsg=insertUsername(username);
-		inserisciPorta(&portaAscolto);
-		inviaInt(sd,COD_INFO);
-		inviaInt(sd,portaAscolto);
+		insertPort(&portaAscolto);
+		sendInteger(sd,COD_INFO);
+		sendInteger(sd,portaAscolto);
 		//printf("invio :%s\n",username );
-		inviaByte(sd,dimMsg,username);
-		int p=quantiByte(sd);
+		sendBytes(sd,dimMsg,username);
+		int p=howManyBytes(sd);
 		if(p==OK){
-			printf("Username accettato dal server\n");
+			printf("Username accepted from the server\n");
 			break;
 		}
 		///printf("codice di ritorno %d\n",p );
-		printf("username già presente sul server: %s\n", username );
+		printf("username already exists on the server: %s\n", username );
 	}
 	return portaAscolto;
 }
 void mysigint(){
-	printf("entro nella mysigint\n");
 	if(inGame==true){
 		disconnect(sd);
-		printf("TI SEI ARRESO\n");
+		printf("YOU GAVE UP :(\n");
 		exit(0);
 	}else{
 		quit(sd);
 	}
 }
 void recvWho(int sd){
-	int dimMsg=quantiByte(sd);
+	int dimMsg=howManyBytes(sd);
 	char buf[dimMsg];
-	riceviByte(sd,buf,dimMsg);
-	printf("Clienti connessi al server:\n");
+	receiveBytes(sd,buf,dimMsg);
+	printf("Clients connected to the server:\n");
 	printf("%s\n",buf );
 }
 
 void connectRequest(int sd,struct rival*opp,struct sockaddr_in*cl){
-	int dim=quantiByte(sd);
+	int dim=howManyBytes(sd);
 	char user[dim];
-	riceviByte(sd,user,dim);
+	receiveBytes(sd,user,dim);
 	strcpy(opp->user,user);
 	opp->udp=-1;
 	inGame=true;
-	printf("Ti vuoi connettere con il client %s y/n?\n",user);
+	printf("Do you want to with client %s y/n?\n",user);
 }
 void connectionInfo(struct sockaddr_in*cl){
 	int dim;
-	opponent.udp=quantiByte(sd); //ricevo la porta udp
-	dim=quantiByte(sd);
-	riceviByte(sd,opponent.ip,dim);
+	opponent.udp=howManyBytes(sd); //ricevo la porta udp
+	dim=howManyBytes(sd);
+	receiveBytes(sd,opponent.ip,dim);
 	initializeSockaddr(opponent.ip, opponent.udp,cl);
 	waitingConnect=false;
 	myturn=false;
 	inGame=true;
-	int app=posizionaNavi(tabella,1);   
+	int app=deployShips(grid,1);   
 	if(app){
 		helpGame();
-		printf("Aspetta il tuo turno\n");
+		printf("Wait for your turn\n");
 	}
 	return;
 }
-void decripta(int cod, int sd,struct rival *opp,enum StatoCasella *b,struct sockaddr_in*cl){
-	//printf("sto decriptando\n");
+void decode(int cod, int sd,struct rival *opp,enum CellStatus *b,struct sockaddr_in*cl){ ///DOPPIA FORSE
+	//printf("sto decodendo\n");
 	switch(cod){
 		case CONN_INFO:
 			connectionInfo(cl);
@@ -522,17 +496,17 @@ void decripta(int cod, int sd,struct rival *opp,enum StatoCasella *b,struct sock
 			break;
 		case COD_CON_REF:
 			opp->udp=-1;
-			printf("connect rifiutata utente inesistente\n");
+			printf("connection refused user does not exist\n");
          	waitingConnect=false;
 			break;
 		case COD_CON_REFUSED:
 			opp->udp=-1;
-			printf("partita rifiutata da: %s\n",opp->user);
+			printf("game refused by: %s\n",opp->user);
          	waitingConnect=false;
 			break;
 		case COD_CON_REF_OCC:
 			opp->udp=-1;
-			printf("connect rifiutata utente occupato\n");
+			printf("connection refused user busy\n");
          	waitingConnect=false;
 			break;
 		case COD_CON_REQ:            //richiesta di connessione di un altro socket
@@ -540,14 +514,14 @@ void decripta(int cod, int sd,struct rival *opp,enum StatoCasella *b,struct sock
 			connectRequest(sd,opp,cl);
 			break;
 		case COD_CON_ACC:       
-			printf("richiesta di connessione accettata con: %s\n",opp->user);
-			opp->udp=quantiByte(sd);
-			int dim=quantiByte(sd);
-			riceviByte(sd,opp->ip,dim);
+			printf("connection request accepted with: %s\n",opp->user);
+			opp->udp=howManyBytes(sd);
+			int dim=howManyBytes(sd);
+			receiveBytes(sd,opp->ip,dim);
 			initializeSockaddr(opp->ip, opp->udp,cl);
 			inGame=true;   
 			waitingConnect=false;  
-			int app=posizionaNavi(b,0);
+			int app=deployShips(b,0);
 			if (app){
 				helpGame();
 				myturn=true;
@@ -555,102 +529,102 @@ void decripta(int cod, int sd,struct rival *opp,enum StatoCasella *b,struct sock
 			break;
 		case DISCONNECT:
 			if(inGame==true){
-				naviRimaste=N_NAVI;
+				shipsLeft=N_SHIPS;
 				inGame=false;
-				resettaGriglia(tabellaAvversaria);
-				printf("HAI VINTO!!! %s si è arreso\n",opp->user);
+				resetGrid(opponentsGrid);
+				printf("YOU WON!!! %s gave up\n",opp->user);
 				opp->udp=-1;
 				strcpy(opp->ip,"");
 			}
 			else{
 				waitingConnect=false;
-				resettaGriglia(tabellaAvversaria);
-				printf(" %s si è disconnesso\n",opp->user);
+				resetGrid(opponentsGrid);
+				printf(" %s has disconnected\n",opp->user);
 			}
 			break;
-		printf("codifica non riconosciuta\n");
+		printf("encoding not recognised\n");
 		break;
 	}
 }
-void riceviUdp(struct sockaddr_in*cl){
+void receiveUdp(struct sockaddr_in*cl){
 	char buf[4];
 	int ret;
 	socklen_t addrlen=sizeof(*cl);
-	int dim =quantiByteUdp(sudp,cl);
+	int dim =howManyBytesUdp(sudp,cl);
 	ret=recvfrom(sudp,(void*)buf,dim,0,(struct sockaddr*)cl,&addrlen);
-	printf("l'avversario ha sparato in %s\n", buf);
+	printf("opponent has shot in  %s\n", buf);
 	if(ret==-1){
-		printf("errore recvfrom\n");
+		printf("error recvfrom\n");
 		exit(1);
 	}
 	int y=atoi((const char*)&buf[2]);
 	char *p=strtok(buf,",");
-	int x=ottieniX(p);
+	int x=getXCoordinate(p);
 	myturn=true;
-	inviaIntUdp(sudp,COD_HIT,cl);
-	if(tabella[x-1+(y-1)*6]==VUOTO){
-		inviaIntUdp(sudp,false,cl);
-		tabella[x-1+(y-1)*6]=MANCATA;
+	sendIntegerUdp(sudp,COD_HIT,cl);
+	if(grid[x-1+(y-1)*6]==EMPTY){
+		sendIntegerUdp(sudp,false,cl);
+		grid[x-1+(y-1)*6]=MISSED;
 		return;
 	}
-	printf("HAi perrso una nave\n");
-	naviRimaste--;
-	tabella[x-1+(y-1)*6]=COLPITA;
-	if(naviRimaste==0){
-		naviRimaste=N_NAVI;
-		inviaIntUdp(sudp,YOU_WON,cl);
-		printf("HAI PERSO :( :( :( \n");
+	printf("You lost a ship\n");
+	shipsLeft--;
+	grid[x-1+(y-1)*6]=HIT;
+	if(shipsLeft==0){
+		shipsLeft=N_SHIPS;
+		sendIntegerUdp(sudp,YOU_WON,cl);
+		printf("YOU LOST :( :( :( \n");
 		inGame=false;
-		resettaGriglia(tabellaAvversaria);
+		resetGrid(opponentsGrid);
 		opponent.udp=-1;
 		strcpy(opponent.ip,"");
 		disconnect(sd);
 		return;
 	}
-	inviaIntUdp(sudp,true,cl);
+	sendIntegerUdp(sudp,true,cl);
 
 }
 
-void decriptaUdp (int cod,struct sockaddr_in*cl,int *x,int *y){
+void decodeUdp (int cod,struct sockaddr_in*cl,int *x,int *y){
 	switch(cod){
 		case COD_SHOT:
 			if(inGame){
-			printf("ricevuta una shot\n");
-			riceviUdp(cl);}
+			printf("received a shot\n");
+			receiveUdp(cl);}
 			break;
 		case true:
-			printf("Hai colpito l'avversario\n");
-			tabellaAvversaria[*x-1+(*y-1)*6]=COLPITA;
+			printf("You hit\n");
+			opponentsGrid[*x-1+(*y-1)*6]=HIT;
 			break;
 		case false:
-			printf("Hai mancato l'avversario\n");
-			tabellaAvversaria[*x-1+(*y-1)*6]=MANCATA;
+			printf("You missed\n");
+			opponentsGrid[*x-1+(*y-1)*6]=MISSED;
 			break;
 		case YOU_WON:
-			printf("HAI VINTO!!!!!!!!!!!!\n");
-			naviRimaste=N_NAVI;
+			printf("YOU WON!!!!!!!!!!!!\n");
+			shipsLeft=N_SHIPS;
 			inGame=false;
-			resettaGriglia(tabellaAvversaria);
+			resetGrid(opponentsGrid);
 			opponent.udp=-1;
 			strcpy(opponent.ip,"");
 			break;
-		printf("codifica non riconosciuta\n");
+		printf("encoding not recognised\n");
 		break;
 	}
 }
 int main(int argc,char* argv[]) {
-	naviRimaste=N_NAVI;
-	infoInviate=false;
+	shipsLeft=N_SHIPS;
+	infoSent=false;
 	opponent.udp=-1;
 	strcpy(opponent.ip,"");
     strcpy(username,"");
     waitingConnect=false;
-    resettaGriglia (tabellaAvversaria);
+    resetGrid (opponentsGrid);
    	inGame=false;
     if (signal(SIGINT, mysigint) == SIG_ERR)
         printf("Cannot handle SIGINT!\n");
     if(argc!=3){
-        printf("Errore passaggio argomenti al server\n");
+        printf("Error passing arguments to the main\n");
         exit(1);
     }
     int porta=atoi((const char*)argv[2]);
@@ -658,7 +632,7 @@ int main(int argc,char* argv[]) {
     int ret;
     sd=socket(AF_INET,SOCK_STREAM,0);
     if(sd==-1){
-        perror("Errore nella creazione del socket ");
+        perror("Error in creating socket ");
         exit(1);
     }
     struct sockaddr_in server;
@@ -669,13 +643,13 @@ int main(int argc,char* argv[]) {
 
     ret=connect(sd,(struct sockaddr*)&server,sizeof(server));
     if(ret==-1){
-        printf("connessione al server %s (porta %d) fallita \n",ip,porta);
-        perror("Errore nella connessione ");
+        printf("connection at server %s (port %d) failed \n",ip,porta);
+        perror("Error during connection ");
         exit(1);
     }
-    printf("connessione al server %s (porta %d) riuscita\n",ip,porta);
+    printf("connection at server %s (port %d) successful\n",ip,porta);
     help();
-    int udp=inviaInfo(sd,username);
+    int udp=sendInfo(sd,username);
     char buf[20];
     fd_set master;
     fd_set read;
@@ -714,8 +688,8 @@ int main(int argc,char* argv[]) {
 	        fflush(stdout);
 	    }else{   
 	       	if(myturn){
-	       		printf("è il tuo turno\n");
-	       		printf("Navi rimaste: %d\n", naviRimaste);
+	       		printf("Is your turn\n");
+	       		printf("Remaining ships: %d\n", shipsLeft);
 	       	}
 	        printf("\r# ");
 	        fflush(stdout);	
@@ -731,13 +705,13 @@ int main(int argc,char* argv[]) {
 	        	if(inGame){
 		        	if(myturn){
 		        		disconnect(sd);
-						printf("TI SEI ARRESO\n");
+						printf("YOU GAVE UP\n");
 		        	}
 		        	if(opponent.udp==-1){
 		        		waitingConnect=false;
 						inGame=false;
-						inviaInt(sd,COD_CON_REF);
-						printf("non hai dato una risposta nel tempo richiesto per la partita\n");
+						sendInteger(sd,COD_CON_REF);
+						printf("You did not give an answer in the required time\n");
 		        	}
 		    //    	break;
 		        }
@@ -749,16 +723,16 @@ int main(int argc,char* argv[]) {
             if(FD_ISSET(i,&read)){
                 if(i==sd){
                 	//printf("richiesta dal server\n");
-                	int cod=quantiByte(sd);
+                	int cod=howManyBytes(sd);
                 	printf("%d\n",cod );
-                	decripta(cod,i,&opponent,tabella,&client);
+                	decode(cod,i,&opponent,grid,&client);
                 }else if (i==0){
-                	printf("attesa comandi\n");
-                    inserisciComando(sd,buf,username,&opponent,tabella,&client,&x,&y);
+                	printf("waiting for commands\n");
+                    insertCommand(sd,buf,username,&opponent,grid,&client,&x,&y);
                 }else if(i==sudp){
                 	printf("udp\n");
-                	int cod=quantiByteUdp(i,&client);
-                	decriptaUdp(cod,&client,&x,&y);
+                	int cod=howManyBytesUdp(i,&client);
+                	decodeUdp(cod,&client,&x,&y);
                 }
             }
     
