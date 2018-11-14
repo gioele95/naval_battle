@@ -1,14 +1,16 @@
 #makefile
 
-CC=gcc
 CFLAGS=-Wall
-all:server 
 
-server: battle_server.o 
-	cc -o server battle_server.o
+default: battle_client
+
+battle_client.o: battle_client.c 
+	gcc -c battle_client.c -o battle_client.o
+
+battle_client: battle_client.o
+	gcc battle_client.o -o battle_client
 
 clean:
-	rm -f p battle_server.o
-
-
+	-rm -f battle_client.o
+	-rm -f battle_client
 
