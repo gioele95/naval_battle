@@ -1,16 +1,10 @@
-#makefile
+CC = gcc
+CFLAGS = -Wall
+DEPS = ../connection/connectionUtility.h UserInterface/front.c UserInterface/front.h battle_client.c
+OBJ = battle_client.o connectionUtility.o front.o
 
-CFLAGS=-Wall
+%.o: %.c $(DEPS)
+	$(CC) $(CFLAGS) -c -o $@ $<
 
-default: battle_client
-
-battle_client.o: battle_client.c 
-	gcc -c battle_client.c -o battle_client.o
-
-battle_client: battle_client.o
-	gcc battle_client.o -o battle_client
-
-clean:
-	-rm -f battle_client.o
-	-rm -f battle_client
-
+battle_client: $(OBJ)
+	gcc $(CFLAGS) -o $@ $^
